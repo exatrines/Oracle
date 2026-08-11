@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-08-12
+
+### Changed
+
+- Major overlay defaults: before 8s, after 3s, 35 px/sec (icon size remains 32)
+
 ## [1.0.0] - 2026-08-11
 
 ### Added
@@ -25,5 +31,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Renamed the plugin from ForeCast to **Oracle** (commands: `/oracle`, `/or`)
 
-[Unreleased]: https://github.com/exatrines/Oracle/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/exatrines/Oracle/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/exatrines/Oracle/releases/tag/v1.0.1
 [1.0.0]: https://github.com/exatrines/Oracle/releases/tag/v1.0.0

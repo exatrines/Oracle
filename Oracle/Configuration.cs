@@ -46,9 +46,9 @@ public sealed class Configuration : IPluginConfiguration
     public float MajorOverlayPosX { get; set; } = 40f;
     public float MajorOverlayPosY { get; set; } = 80f;
     public bool MajorOverlayClickThrough { get; set; }
-    public float MajorPixelsPerSecond { get; set; } = 48f;
-    public float MajorBeforeSeconds { get; set; } = 3f;
-    public float MajorAfterSeconds { get; set; } = 5f;
+    public float MajorPixelsPerSecond { get; set; } = 35f;
+    public float MajorBeforeSeconds { get; set; } = 8f;
+    public float MajorAfterSeconds { get; set; } = 3f;
     public float MajorIconSize { get; set; } = 32f;
     public MajorOverlayLaneMode MajorLaneMode { get; set; } = MajorOverlayLaneMode.Single;
     public bool MajorShowTitle { get; set; } = true;

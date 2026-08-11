@@ -29,17 +29,16 @@ https://raw.githubusercontent.com/exatrines/DalamudPlugins/refs/heads/main/plugi
 
 | コマンド | 説明 |
 | --- | --- |
-| `/oracle` / `/or` | タイムライン画面の表示切替 |
-| `/oracle s` | プラグイン設定の表示切替 |
-| `/oracle overlay` | リストオーバーレイの表示切替 |
-| `/oracle ar` | AutoRecord オーバーレイの表示切替 |
-| `/oracle load <name>` | 名前でタイムラインをロード |
-| `/oracle countdown <sec>` | テスト用カウントダウンを注入 |
-| `/oracle preview` / `preview stop` | 戦闘なしでタイムラインをプレビュー |
-| `/oracle reset` | 時計をリセット |
-| `/oracle help` | ヘルプを表示 |
-
-AutoRecord 関連の設定トグルは `/oracle setting …` からも利用できます（ゲーム内ヘルプ参照）。
+| `/oracle` | タイムライン設定画面の表示切替 |
+| `/oracle config` | プラグイン設定画面の表示切替 |
+| `/oracle overlay timeline` | タイムラインオーバーレイの表示切替 |
+| `/oracle overlay major` | メジャーオーバーレイの表示切替 |
+| `/oracle overlay icon` | アイコンハイライトの表示切替 |
+| `/oracle autorecord` | オートレコードの有効切替 |
+| `/oracle load <name>` | タイムラインのロード |
+| `/oracle unload` | タイムラインのアンロード |
+| `/oracle preview start [sec]` | プレビューのカウントダウン開始（省略時 21 秒） |
+| `/oracle preview stop` | プレビューの停止 |
 
 ## スクリーンショット
 

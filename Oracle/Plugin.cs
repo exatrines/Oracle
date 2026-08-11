@@ -12,7 +12,6 @@ public sealed class Plugin : IDalamudPlugin
     public const string Name = "Oracle";
 
     private const string CommandName = "/oracle";
-    private const string CommandAlias = "/or";
 
     internal static Configuration C = null!;
 
@@ -27,7 +26,6 @@ public sealed class Plugin : IDalamudPlugin
     private readonly AutoRecordService _autoRecord;
     private readonly HotbarHighlightService _hotbarHighlight;
     private readonly CommandInfo _oracleCommand;
-    private readonly CommandInfo _aliasCommand;
 
     public Plugin(
         IDalamudPluginInterface pluginInterface,
@@ -68,7 +66,7 @@ public sealed class Plugin : IDalamudPlugin
         _autoRecord = new AutoRecordService(autoRecordStore, _engine.ActionUse);
         _hotbarHighlight = new HotbarHighlightService(_engine);
 
-        // 3. ImGui windows  EActionSearch / import panels capture ConfigWindow via delayed assign
+        // 3. ImGui windows — ActionSearch / import panels capture ConfigWindow via delayed assign
         _pluginSettingsWindow = new PluginSettingsWindow();
 
         ConfigWindow? timelineWindow = null;
@@ -118,9 +116,7 @@ public sealed class Plugin : IDalamudPlugin
 
         // 5. Chat commands + per-frame tick
         _oracleCommand = new CommandInfo(OnCommand) { HelpMessage = I18n.Get("cmd.help.oracle") };
-        _aliasCommand = new CommandInfo(OnCommand) { HelpMessage = I18n.Get("cmd.help.alias") };
         commandManager.AddHandler(CommandName, _oracleCommand);
-        commandManager.AddHandler(CommandAlias, _aliasCommand);
         I18n.Reloaded += OnI18nReloaded;
 
         framework.Update += OnFrameworkUpdate;
@@ -169,7 +165,6 @@ public sealed class Plugin : IDalamudPlugin
     private void OnI18nReloaded()
     {
         _oracleCommand.HelpMessage = I18n.Get("cmd.help.oracle");
-        _aliasCommand.HelpMessage = I18n.Get("cmd.help.alias");
     }
 
     private void OnCommand(string command, string args)
@@ -185,49 +180,95 @@ public sealed class Plugin : IDalamudPlugin
 
         switch (parts[0].ToLowerInvariant())
         {
-            case "s":
-            case "setting":
-            case "settings":
-                HandleSettingsCommand(parts.Skip(1).ToArray());
-                break;
-            case "toggle":
             case "config":
-                ToggleTimelineSettings();
+                TogglePluginSettings();
                 break;
             case "overlay":
-                ToggleOverlay();
+                HandleOverlayCommand(parts.Skip(1).ToArray());
                 break;
-            case "ar":
             case "autorecord":
-                ToggleAutoRecordOverlay();
-                break;
-            case "countdown":
-            case "cd":
-                if (parts.Length < 2 || !float.TryParse(parts[1], out var sec) || sec <= 0f)
-                {
-                    PluginServices.ChatGui.PrintError(I18n.Get("cmd.err.countdown_usage"));
-                    return;
-                }
-                _engine.InjectCountdown(sec);
-                break;
-            case "reset":
-                _engine.Reset();
-                PluginServices.ChatGui.Print(I18n.Get("cmd.chat.reset"));
-                break;
-            case "preview":
-                if (parts.Length > 1 && parts[1].Equals("stop", StringComparison.OrdinalIgnoreCase))
-                    _engine.StopPreview();
-                else
-                    _engine.StartPreview();
+                ToggleAutoRecordEnabled();
                 break;
             case "load":
                 LoadTimelineByToken(parts.Length > 1 ? string.Join(' ', parts.Skip(1)) : string.Empty);
                 break;
-            case "help":
-                PluginServices.ChatGui.Print(I18n.Get("cmd.chat.help"));
+            case "unload":
+                _engine.Unload();
+                PluginServices.ChatGui.Print(I18n.Get("cmd.chat.unloaded"));
+                break;
+            case "preview":
+                HandlePreviewCommand(parts.Skip(1).ToArray());
                 break;
             default:
                 PluginServices.ChatGui.PrintError(I18n.Format("cmd.err.unknown", parts[0]));
+                break;
+        }
+    }
+
+    private void HandleOverlayCommand(string[] parts)
+    {
+        if (parts.Length == 0)
+        {
+            PluginServices.ChatGui.PrintError(I18n.Get("cmd.err.overlay_usage"));
+            return;
+        }
+
+        switch (parts[0].ToLowerInvariant())
+        {
+            case "timeline":
+                ToggleFlag(
+                    () => C.ShowOverlay,
+                    v => C.ShowOverlay = v,
+                    "cmd.chat.overlay.timeline");
+                break;
+            case "major":
+                ToggleFlag(
+                    () => C.ShowMajorOverlay,
+                    v => C.ShowMajorOverlay = v,
+                    "cmd.chat.overlay.major");
+                break;
+            case "icon":
+                ToggleFlag(
+                    () => C.ShowHotbarHighlight,
+                    v => C.ShowHotbarHighlight = v,
+                    "cmd.chat.overlay.icon");
+                break;
+            default:
+                PluginServices.ChatGui.PrintError(I18n.Get("cmd.err.overlay_usage"));
+                break;
+        }
+    }
+
+    private void HandlePreviewCommand(string[] parts)
+    {
+        if (parts.Length == 0)
+        {
+            PluginServices.ChatGui.PrintError(I18n.Get("cmd.err.preview_usage"));
+            return;
+        }
+
+        switch (parts[0].ToLowerInvariant())
+        {
+            case "start":
+            {
+                var sec = 21f;
+                if (parts.Length > 1)
+                {
+                    if (!float.TryParse(parts[1], out sec) || sec < 0f)
+                    {
+                        PluginServices.ChatGui.PrintError(I18n.Get("cmd.err.preview_usage"));
+                        return;
+                    }
+                }
+
+                _engine.StartPreview(sec);
+                break;
+            }
+            case "stop":
+                _engine.StopPreview();
+                break;
+            default:
+                PluginServices.ChatGui.PrintError(I18n.Get("cmd.err.preview_usage"));
                 break;
         }
     }
@@ -253,106 +294,26 @@ public sealed class Plugin : IDalamudPlugin
 
     private void TogglePluginSettings() => _pluginSettingsWindow.Toggle();
 
-    private void HandleSettingsCommand(string[] parts)
+    private static void ToggleFlag(Func<bool> get, Action<bool> set, string labelKey)
     {
-        if (parts.Length == 0)
-        {
-            TogglePluginSettings();
-            return;
-        }
-
-        switch (parts[0].ToLowerInvariant())
-        {
-            case "autorecord":
-            case "ar":
-                HandleAutoRecordSettingsCommand(parts.Skip(1).ToArray());
-                break;
-            default:
-                PluginServices.ChatGui.PrintError(I18n.Format("cmd.err.unknown", parts[0]));
-                break;
-        }
-    }
-
-    private void HandleAutoRecordSettingsCommand(string[] parts)
-    {
-        if (parts.Length == 0)
-        {
-            _pluginSettingsWindow.ToggleAutoRecordPage();
-            return;
-        }
-
-        switch (parts[0].ToLowerInvariant())
-        {
-            case "enable-record":
-            case "toggle-recording":
-            case "toggle-autorecord":
-            {
-                C.AutoRecordEnabled = !C.AutoRecordEnabled;
-                C.Save();
-                PluginServices.ChatGui.Print(
-                    I18n.Get(
-                        C.AutoRecordEnabled
-                            ? "cmd.chat.autorecord_enabled"
-                            : "cmd.chat.autorecord_disabled"));
-                break;
-            }
-            case "enable-current":
-            case "toggle-current-zone":
-            {
-                var territory = PluginServices.ClientState.TerritoryType;
-                if (territory == 0)
-                {
-                    PluginServices.ChatGui.PrintError(I18n.Get("cmd.err.autorecord_no_zone"));
-                    return;
-                }
-
-                var enabled = C.IsAutoRecordZoneEnabled(territory);
-                if (enabled)
-                    C.RemoveAutoRecordZoneEnabled(territory);
-                else
-                    C.AddAutoRecordZoneEnabled(territory);
-
-                PluginServices.ChatGui.Print(
-                    I18n.Format(
-                        enabled
-                            ? "cmd.chat.autorecord_zone_disabled"
-                            : "cmd.chat.autorecord_zone_enabled",
-                        territory));
-                break;
-            }
-            default:
-                PluginServices.ChatGui.PrintError(I18n.Format("cmd.err.unknown", parts[0]));
-                break;
-        }
-    }
-
-    private void ToggleOverlay()
-    {
-        C.ShowOverlay = !C.ShowOverlay;
+        set(!get());
         C.Save();
         PluginServices.ChatGui.Print(
             I18n.Format(
-                "cmd.chat.overlay",
-                I18n.Get(C.ShowOverlay ? "cmd.chat.overlay.shown" : "cmd.chat.overlay.hidden")));
+                "cmd.chat.flag",
+                I18n.Get(labelKey),
+                I18n.Get(get() ? "cmd.chat.overlay.shown" : "cmd.chat.overlay.hidden")));
     }
 
-    private void ToggleAutoRecordOverlay()
+    private void ToggleAutoRecordEnabled()
     {
-        if (!C.AutoRecordEnabled)
-        {
-            PluginServices.ChatGui.PrintError(I18n.Get("cmd.err.autorecord_disabled"));
-            return;
-        }
-
-        C.AutoRecordOverlayVisible = !C.AutoRecordOverlayVisible;
+        C.AutoRecordEnabled = !C.AutoRecordEnabled;
         C.Save();
         PluginServices.ChatGui.Print(
-            I18n.Format(
-                "cmd.chat.autorecord_overlay",
-                I18n.Get(
-                    C.AutoRecordOverlayVisible
-                        ? "cmd.chat.overlay.shown"
-                        : "cmd.chat.overlay.hidden")));
+            I18n.Get(
+                C.AutoRecordEnabled
+                    ? "cmd.chat.autorecord_enabled"
+                    : "cmd.chat.autorecord_disabled"));
     }
 
     private void OnFrameworkUpdate(IFramework framework)
@@ -369,12 +330,11 @@ public sealed class Plugin : IDalamudPlugin
 
     public void Dispose()
     {
-        // Reverse of ctor: tick ↁEcommands ↁEUI ↁEservices ↁEconfig
+        // Reverse of ctor: tick → commands → UI → services → config
         PluginServices.Framework.Update -= OnFrameworkUpdate;
 
         I18n.Reloaded -= OnI18nReloaded;
         PluginServices.CommandManager.RemoveHandler(CommandName);
-        PluginServices.CommandManager.RemoveHandler(CommandAlias);
 
         PluginServices.PluginInterface.UiBuilder.Draw -= DrawUi;
         PluginServices.PluginInterface.UiBuilder.OpenConfigUi -= TogglePluginSettings;

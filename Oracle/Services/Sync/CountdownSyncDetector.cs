@@ -36,7 +36,7 @@ internal sealed class CountdownSyncDetector : IDisposable
     {
         JustStarted = false;
 
-        // Manual /or countdown takes priority over chat this frame.
+        // Manual InjectCountdown takes priority over chat this frame.
         if (_pendingInject)
         {
             _pendingInject = false;

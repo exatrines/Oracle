@@ -4,7 +4,7 @@
 
     <PropertyGroup>
         <Authors>mirage</Authors>
-        <Version>1.0.1</Version>
+        <Version>1.0.2</Version>
         <Description>Duty timeline cues for mitigation and skill timing</Description>
         <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
     </PropertyGroup>

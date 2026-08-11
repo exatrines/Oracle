@@ -192,14 +192,15 @@ internal sealed class TimelineEngine : IDisposable
 
     // --- Clock ---
 
-    public void StartPreview()
+    public void StartPreview(float countdownSeconds = 21f)
     {
         var doc = ResolveDocumentForPlayer() ?? _store.ActiveDocument;
         if (doc == null)
             return;
 
-        StartClock(doc, clockOffset: -20f, preview: true);
-        PluginServices.ChatGui.Print(I18n.Format("engine.chat.preview", doc.Name));
+        var sec = Math.Max(0f, countdownSeconds);
+        StartClock(doc, clockOffset: -sec, preview: true);
+        PluginServices.ChatGui.Print(I18n.Format("engine.chat.preview", doc.Name, sec));
     }
 
     public void StopPreview()
@@ -208,6 +209,11 @@ internal sealed class TimelineEngine : IDisposable
             return;
         StopClock();
         PluginServices.ChatGui.Print(I18n.Get("engine.chat.preview_stopped"));
+    }
+
+    public void Unload()
+    {
+        ClearTimelineState();
     }
 
     public void InjectCountdown(float remainingSeconds)

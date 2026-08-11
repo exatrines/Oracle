@@ -29,17 +29,16 @@ Then install **Oracle** from the plugin installer.
 
 | Command | Description |
 | --- | --- |
-| `/oracle` / `/or` | Toggle the timeline window |
-| `/oracle s` | Toggle plugin settings |
-| `/oracle overlay` | Toggle the timeline list overlay |
-| `/oracle ar` | Toggle the AutoRecord overlay |
-| `/oracle load <name>` | Load a timeline by name |
-| `/oracle countdown <sec>` | Inject a test countdown |
-| `/oracle preview` / `preview stop` | Preview a timeline without combat |
-| `/oracle reset` | Reset the clock |
-| `/oracle help` | Print help |
-
-AutoRecord-related settings toggles are also available under `/oracle setting …` (see in-game help).
+| `/oracle` | Toggle timeline settings |
+| `/oracle config` | Toggle plugin settings |
+| `/oracle overlay timeline` | Toggle timeline overlay |
+| `/oracle overlay major` | Toggle major overlay |
+| `/oracle overlay icon` | Toggle icon highlight |
+| `/oracle autorecord` | Toggle AutoRecord enabled |
+| `/oracle load <name>` | Load a timeline |
+| `/oracle unload` | Unload the timeline |
+| `/oracle preview start [sec]` | Start preview countdown (default 21) |
+| `/oracle preview stop` | Stop preview |
 
 ## Screenshots
 

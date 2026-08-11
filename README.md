@@ -2,9 +2,9 @@
 
 [日本語](README.ja.md)
 
-Dalamud plugin that shows **duty timeline cues** for mitigation and skill timing.
+Oracle is a Dalamud plugin that shows duty timeline cues—so you know which skill to use, and when.
 
-Match a timeline to zone, job, and scene. When the countdown hits (or combat starts), Oracle runs a clock and surfaces upcoming actions on overlays and optional hotbar highlights.
+A main way to build timelines is importing casts from **FFLogs**. You can also **record your own actions** in selected duties (AutoRecord) and turn that into a timeline. Match zone, job, and scene; when countdown or combat starts, Oracle runs a clock and surfaces upcoming actions on overlays, with optional hotbar icon highlights.
 
 ## Install
 

@@ -6,6 +6,16 @@ Dalamud plugin that shows **duty timeline cues** for mitigation and skill timing
 
 Match a timeline to zone, job, and scene. When the countdown hits (or combat starts), Oracle runs a clock and surfaces upcoming actions on overlays and optional hotbar highlights.
 
+## Install
+
+Add this URL as a **custom plugin repository** in Dalamud (Settings → Experimental):
+
+```
+https://raw.githubusercontent.com/exatrines/DalamudPlugins/refs/heads/main/pluginmaster.json
+```
+
+Then install **Oracle** from the plugin installer.
+
 ## Features
 
 - **Timeline editor** — cues by time offset (actions or memos), zone / job / SceneId auto-load, manual load commands
@@ -31,12 +41,11 @@ Match a timeline to zone, job, and scene. When the countdown hits (or combat sta
 
 AutoRecord-related settings toggles are also available under `/oracle setting …` (see in-game help).
 
-## Requirements
+## Screenshots
 
-- [XIVLauncher](https://goatcorp.github.io/) / Dalamud
-- Final Fantasy XIV (Windows)
+![Major overlay and hotbar icon highlight](docs/screenshots/major-hotbar-highlight-730x380.png)
 
-## Install (dev)
+## For developers
 
 1. Build: `dotnet build Oracle.sln -c Release -p:Platform=x64`
 2. Point Dalamud’s **dev plugin** path at `Oracle/bin/Release/`
@@ -44,14 +53,6 @@ AutoRecord-related settings toggles are also available under `/oracle setting �
 
 [MirageUI](https://github.com/exatrines/MirageUI) is included as a git submodule for the shared UI kit.
 
-## Screenshots
-
-![Major overlay and hotbar icon highlight](docs/screenshots/major-hotbar-highlight-730x380.png)
-
 ## License
 
-[AGPL-3.0-or-later](LICENSE) — same family of license commonly used with Dalamud plugins.
-
-## Disclaimer
-
-Oracle is an unofficial third-party tool and is not affiliated with Square Enix or the Dalamud project. Use at your own risk and follow the game’s terms of service and Dalamud plugin guidelines.
+[AGPL-3.0-or-later](LICENSE)

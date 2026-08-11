@@ -6,6 +6,16 @@
 
 ゾーン・ジョブ・シーンに合わせてタイムラインを紐づけます。カウントダウン到達時（または戦闘開始時）に時計が動き、オーバーレイと任意のホットバーハイライトで今後のアクションを示します。
 
+## インストール
+
+Dalamud の **カスタムプラグインリポジトリ**（設定 → Experimental）に次の URL を追加します。
+
+```
+https://raw.githubusercontent.com/exatrines/DalamudPlugins/refs/heads/main/pluginmaster.json
+```
+
+プラグインインストーラから **Oracle** をインストールしてください。
+
 ## 機能
 
 - **タイムラインエディタ** — 時間オフセットのキュー（アクション／メモ）、ゾーン・ジョブ・SceneId による自動ロード、手動ロードコマンド
@@ -31,12 +41,11 @@
 
 AutoRecord 関連の設定トグルは `/oracle setting …` からも利用できます（ゲーム内ヘルプ参照）。
 
-## 動作環境
+## スクリーンショット
 
-- [XIVLauncher](https://goatcorp.github.io/) / Dalamud
-- Final Fantasy XIV（Windows）
+![Major オーバーレイとホットバーアイコンハイライト](docs/screenshots/major-hotbar-highlight-730x380.png)
 
-## インストール（開発）
+## 開発者向け
 
 1. ビルド: `dotnet build Oracle.sln -c Release -p:Platform=x64`
 2. Dalamud の **dev plugin** パスを `Oracle/bin/Release/` に向ける
@@ -44,14 +53,6 @@ AutoRecord 関連の設定トグルは `/oracle setting …` からも利用で�
 
 共有 UI キットとして [MirageUI](https://github.com/exatrines/MirageUI) を git サブモジュールで同梱しています。
 
-## スクリーンショット
-
-![Major オーバーレイとホットバーアイコンハイライト](docs/screenshots/major-hotbar-highlight-730x380.png)
-
 ## ライセンス
 
-[AGPL-3.0-or-later](LICENSE) — Dalamud プラグインでよく使われる系統のライセンスです。
-
-## 免責
-
-Oracle は非公式のサードパーティ製ツールであり、Square Enix および Dalamud プロジェクトとは無関係です。自己責任で利用し、ゲームの利用規約および Dalamud のプラグインガイドラインに従ってください。
+[AGPL-3.0-or-later](LICENSE)

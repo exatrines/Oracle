@@ -1,5 +1,7 @@
 # Oracle
 
+[日本語](README.ja.md)
+
 Dalamud plugin that shows **duty timeline cues** for mitigation and skill timing.
 
 Match a timeline to zone, job, and scene. When the countdown hits (or combat starts), Oracle runs a clock and surfaces upcoming actions on overlays and optional hotbar highlights.

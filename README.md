@@ -2,23 +2,28 @@
 
 [日本語](README.ja.md)
 
+![Major overlay and hotbar icon highlight](docs/screenshots/major-hotbar-highlight-730x380.png)
+
 Oracle is a Dalamud plugin that shows duty timeline cues—so you know which skill to use, and when.
 
-A main way to build timelines is importing casts from **FFLogs**. You can also **record your own actions** in selected duties (AutoRecord) and turn that into a timeline. Match zone, job, and scene; when countdown or combat starts, Oracle runs a clock and surfaces upcoming actions on overlays, with optional hotbar icon highlights.
+A main way to build timelines is importing casts from **FFLogs**. You can also **record your own actions** in selected duties (AutoRecord) and turn that into a timeline. Match zone and job; when countdown or combat starts, Oracle runs a clock and surfaces upcoming actions on overlays, with optional hotbar icon highlights.
+
+Scene-based Auto Load and Scene Transition cues are **experimental** (still under testing).
 
 ## Install
 
-Add this URL as a **custom plugin repository** in Dalamud (Settings → Experimental):
+1. Run `/xlsettings` and open the **Experimental** tab
+2. Add this URL under **Custom Plugin Repositories**:
 
 ```
 https://raw.githubusercontent.com/exatrines/DalamudPlugins/refs/heads/main/pluginmaster.json
 ```
 
-Then install **Oracle** from the plugin installer.
+3. Run `/xlplugins` and install **Oracle**
 
 ## Features
 
-- **Timeline editor** — cues by time offset (actions or memos), zone / job / SceneId auto-load, manual load commands
+- **Timeline editor** — cues by time offset (actions, memos, or experimental scene transitions), zone / job auto-load (optional experimental scene filter), manual load commands
 - **Overlays** — list overlay (upcoming rows) and major overlay (scrolling icon lane)
 - **Action highlight** — before / after windows with optional blink; optional hotbar highlight
 - **FFLogs import** — pull casts from a report into a new timeline (API credentials in settings)
@@ -39,10 +44,6 @@ Then install **Oracle** from the plugin installer.
 | `/oracle unload` | Unload the timeline |
 | `/oracle preview start [sec]` | Start preview countdown (default 21) |
 | `/oracle preview stop` | Stop preview |
-
-## Screenshots
-
-![Major overlay and hotbar icon highlight](docs/screenshots/major-hotbar-highlight-730x380.png)
 
 ## For developers
 

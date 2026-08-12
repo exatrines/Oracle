@@ -213,6 +213,7 @@ internal sealed partial class ConfigWindow
     private void DrawSceneId(TimelineDocument doc)
     {
         var sceneId = (int)doc.SceneId;
+        var filterEnabled = doc.SceneFilterEnabled;
         var gap = ImGui.GetStyle().ItemInnerSpacing.X;
         var sceneMatch = _engine.MatchesLiveScene(doc);
         var liveScene = _engine.CurrentGameSceneId;
@@ -248,18 +249,17 @@ internal sealed partial class ConfigWindow
                     : I18n.Get("config.scene.tooltip.unlocks")));
 
         ImGui.TableNextColumn();
-        if (MirageUi.InputInt(
-                string.Empty,
+        if (SceneFilterField.Draw(
+                "scene",
+                ref filterEnabled,
                 ref sceneId,
-                step: 0,
-                stepFast: 0,
-                id: "scene",
-                width: MirageUi.InputWidthFill,
                 liveMatch: sceneMatch,
-                matchTooltip: FormatMatchTooltip(sceneMatch, liveScene.ToString())))
+                matchTooltip: FormatMatchTooltip(
+                    sceneMatch,
+                    filterEnabled ? liveScene.ToString() : I18n.Get("config.scene.any"))))
         {
-            sceneId = Math.Max(0, sceneId);
-            doc.SceneId = (uint)sceneId;
+            doc.SceneFilterEnabled = filterEnabled;
+            doc.SceneId = (uint)Math.Max(0, sceneId);
             PersistDocument(doc);
         }
 

@@ -372,6 +372,7 @@ internal sealed class AutoRecordService : IDisposable
             ClassJobLevel = _classJobLevel,
             ClassJobId = _classJobId,
             SceneId = _sceneId,
+            SceneFilterEnabled = true,
             Cues = _cues
                 .Select(c => new TimelineCue
                 {
@@ -491,6 +492,8 @@ internal sealed class AutoRecordService : IDisposable
             ? I18n.Get("fflogs.title.unknown")
             : body;
     }
+
+    public uint CurrentGameSceneId => ReadGameSceneId();
 
     private static unsafe uint ReadGameSceneId()
     {

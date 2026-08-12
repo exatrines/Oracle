@@ -10,6 +10,7 @@ internal sealed class CombatSyncDetector
 
     public bool JustEnteredCombat { get; private set; }
     public bool JustLeftCombat { get; private set; }
+    public bool InCombat => _wasInCombat;
 
     public void Update()
     {

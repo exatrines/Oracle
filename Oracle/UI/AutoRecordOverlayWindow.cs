@@ -164,11 +164,12 @@ internal sealed class AutoRecordOverlayWindow : Window
 
     // --- status rows ---
 
-    /// <summary>Row 1: job | zone ⚁E/summary>
+    /// <summary>Row 1: job | zone | scene · gear</summary>
     private void DrawJobZoneRow(Vector4 textPrimary, Vector4 textMuted)
     {
         var job = ResolveJobLabel();
         var zone = ResolveZoneLabel();
+        var sceneText = I18n.Format("autorecord.overlay.scene", _autoRecord.CurrentGameSceneId);
         var sep = " | ";
         var btnSize = MirageUi.ResolveControlHeight();
         var rowMin = ImGui.GetCursorScreenPos();
@@ -181,11 +182,19 @@ internal sealed class AutoRecordOverlayWindow : Window
         MirageUi.Text(sep, textMuted, wrap: false);
         ImGui.SameLine(0f, 0f);
 
-        var used = ImGui.CalcTextSize(job).X + ImGui.CalcTextSize(sep).X;
+        var used = ImGui.CalcTextSize(job).X
+                   + ImGui.CalcTextSize(sep).X
+                   + ImGui.CalcTextSize(sep).X
+                   + ImGui.CalcTextSize(sceneText).X;
         var zoneMaxW = MathF.Max(20f, rowWidth - used - btnSize - gap);
         MirageUi.Text(TruncateToWidth(zone, zoneMaxW), textPrimary, wrap: false);
         if (ImGui.IsItemHovered())
             MirageUi.Tooltip(zone);
+
+        ImGui.SameLine(0f, 0f);
+        MirageUi.Text(sep, textMuted, wrap: false);
+        ImGui.SameLine(0f, 0f);
+        MirageUi.Text(sceneText, textPrimary, wrap: false);
 
         ImGui.SetCursorScreenPos(
             new Vector2(

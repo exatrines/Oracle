@@ -68,6 +68,7 @@ internal sealed class TimelineStore
             TerritoryTypeId = source.TerritoryTypeId,
             ContentFinderConditionId = source.ContentFinderConditionId,
             SceneId = source.SceneId,
+            SceneFilterEnabled = source.SceneFilterEnabled,
             ClassJobId = source.ClassJobId,
             ClassJobLevel = source.ClassJobLevel,
             Cues = source.Cues
@@ -77,6 +78,8 @@ internal sealed class TimelineStore
                     Kind = c.Kind,
                     ActionId = c.ActionId,
                     Label = c.Kind == TimelineCueKind.Memo ? c.Label : string.Empty,
+                    SceneBefore = c.SceneBefore,
+                    SceneAfter = c.SceneAfter,
                 })
                 .ToList(),
         };
@@ -134,7 +137,8 @@ internal sealed class TimelineStore
     private static bool SameMatchKey(TimelineDocument a, TimelineDocument b) =>
         a.TerritoryTypeId == b.TerritoryTypeId
         && a.ClassJobId == b.ClassJobId
-        && a.SceneId == b.SceneId;
+        && a.SceneFilterEnabled == b.SceneFilterEnabled
+        && (!a.SceneFilterEnabled || a.SceneId == b.SceneId);
 
     public void SetActive(string? id)
     {

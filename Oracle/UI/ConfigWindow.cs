@@ -42,6 +42,8 @@ internal sealed partial class ConfigWindow : Window
     private TimelineCueKind _newCueKind = TimelineCueKind.Action;
     private string _newCueMemo = string.Empty;
     private uint _newCueActionId;
+    private int _newCueSceneBefore;
+    private int _newCueSceneAfter;
     private string? _newCueDraftDocId;
 
     /// <summary>Selected cue ids in the editor table (checkboxes).</summary>

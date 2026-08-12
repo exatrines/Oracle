@@ -10,7 +10,8 @@ public sealed class TimelineDocument
     public string Name { get; set; } = "Untitled";
 
     /// <summary>
-    /// When true, this timeline auto-loads when Zone / Job / SceneId match.
+    /// When true, this timeline auto-loads when Zone / Job / Scene match
+    /// (Scene filter applies out of combat only; the clock never auto-switches docs).
     /// </summary>
     public bool AutoLoadEnabled { get; set; } = true;
 
@@ -29,7 +30,13 @@ public sealed class TimelineDocument
     /// </summary>
     public uint ContentFinderConditionId { get; set; }
 
-    /// <summary>EnvManager scene (Splatoon-compatible). 0 = any.</summary>
+    /// <summary>
+    /// When false, Auto Load ignores scene (any). When true, requires <see cref="SceneId"/>
+    /// (0 is a valid scene id).
+    /// </summary>
+    public bool SceneFilterEnabled { get; set; }
+
+    /// <summary>EnvManager scene (Splatoon-compatible). Used only when <see cref="SceneFilterEnabled"/>.</summary>
     public uint SceneId { get; set; }
 
     /// <summary>ClassJob row id. 0 = not set (job required).</summary>
@@ -48,6 +55,7 @@ public enum TimelineCueKind
 {
     Action = 0,
     Memo = 1,
+    SceneTransition = 2,
 }
 
 public sealed class TimelineCue
@@ -57,7 +65,7 @@ public sealed class TimelineCue
     /// <summary>Relative to clock zero (pull). Negative = pre-pull.</summary>
     public float TimeOffsetSec { get; set; }
 
-    /// <summary>Action button vs free-text memo in the Contents column.</summary>
+    /// <summary>Action / memo / scene-transition row in the Contents column.</summary>
     public TimelineCueKind Kind { get; set; } = TimelineCueKind.Action;
 
     public uint ActionId { get; set; }
@@ -65,4 +73,10 @@ public sealed class TimelineCue
     /// <summary>Memo text when <see cref="Kind"/> is Memo. Unused for Action (name from ActionId).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public string Label { get; set; } = string.Empty;
+
+    /// <summary>From-scene for <see cref="TimelineCueKind.SceneTransition"/>.</summary>
+    public uint SceneBefore { get; set; }
+
+    /// <summary>To-scene for <see cref="TimelineCueKind.SceneTransition"/>.</summary>
+    public uint SceneAfter { get; set; }
 }

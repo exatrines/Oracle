@@ -72,13 +72,47 @@ internal static class ActionLookup
     /// </summary>
     public static bool IsMajorAbilityLane(TimelineCue cue)
     {
-        if (cue.Kind == TimelineCueKind.Memo)
+        if (cue.Kind is TimelineCueKind.Memo or TimelineCueKind.SceneTransition)
             return true;
 
         if (cue.ActionId == 0)
             return true;
 
         return !IsGcdSkill(cue.ActionId);
+    }
+
+    public static string GetOverlayLabel(TimelineCue cue)
+    {
+        return cue.Kind switch
+        {
+            TimelineCueKind.Memo => string.IsNullOrWhiteSpace(cue.Label)
+                ? I18n.Get("overlay.memo_fallback")
+                : cue.Label,
+            TimelineCueKind.SceneTransition => I18n.Format(
+                "overlay.scene_transition",
+                cue.SceneBefore,
+                cue.SceneAfter),
+            _ => GetName(cue.ActionId),
+        };
+    }
+
+    public static string GetMajorAbbrev(TimelineCue cue)
+    {
+        if (cue.Kind == TimelineCueKind.SceneTransition)
+        {
+            var text = $"{cue.SceneBefore}->{cue.SceneAfter}";
+            return text.Length > 4 ? text[..4] : text;
+        }
+
+        if (cue.Kind == TimelineCueKind.Memo)
+        {
+            var memo = string.IsNullOrWhiteSpace(cue.Label)
+                ? I18n.Get("overlay.memo_abbrev")
+                : cue.Label;
+            return memo.Length > 4 ? memo[..4] : memo;
+        }
+
+        return string.Empty;
     }
 
     /// <summary>

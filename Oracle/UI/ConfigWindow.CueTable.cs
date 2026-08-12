@@ -126,23 +126,25 @@ internal sealed partial class ConfigWindow
         }
 
         ImGui.TableNextColumn();
-        var actionKind = I18n.Get("config.cue.kind.action");
-        var memoKind = I18n.Get("config.cue.kind.memo");
-        var kindLabel = cue.Kind == TimelineCueKind.Memo ? memoKind : actionKind;
+        var kindLabel = CueKindLabel(cue.Kind);
         if (MirageUi.Dropdown(
                 string.Empty,
                 ref kindLabel,
-                [actionKind, memoKind],
+                CueKindLabels,
                 id: "kind",
                 allowClear: false,
                 width: MirageUi.InputWidthFill))
         {
-            cue.Kind = string.Equals(kindLabel, memoKind, StringComparison.Ordinal)
-                ? TimelineCueKind.Memo
-                : TimelineCueKind.Action;
-            if (cue.Kind == TimelineCueKind.Action)
-                cue.Label = string.Empty;
-            dirty = true;
+            var next = ParseCueKindLabel(kindLabel);
+            if (next != cue.Kind)
+            {
+                cue.Kind = next;
+                if (cue.Kind != TimelineCueKind.Memo)
+                    cue.Label = string.Empty;
+                if (cue.Kind != TimelineCueKind.Action)
+                    cue.ActionId = 0;
+                dirty = true;
+            }
         }
 
         ImGui.TableNextColumn();
@@ -159,6 +161,11 @@ internal sealed partial class ConfigWindow
                 cue.Label = memo;
                 dirty = true;
             }
+        }
+        else if (cue.Kind == TimelineCueKind.SceneTransition)
+        {
+            if (DrawSceneTransitionFields(cue, "##rowScene"))
+                dirty = true;
         }
         else
         {
@@ -314,6 +321,8 @@ internal sealed partial class ConfigWindow
             Kind = source.Kind,
             ActionId = source.ActionId,
             Label = source.Kind == TimelineCueKind.Memo ? source.Label : string.Empty,
+            SceneBefore = source.SceneBefore,
+            SceneAfter = source.SceneAfter,
         };
 
     private sealed class CueClipboardPayload
@@ -360,6 +369,8 @@ internal sealed partial class ConfigWindow
         _newCueKind = TimelineCueKind.Action;
         _newCueMemo = string.Empty;
         _newCueActionId = 0;
+        _newCueSceneBefore = 0;
+        _newCueSceneAfter = 0;
     }
 
     /// <summary>Fixed input row under the cue table; up-arrow commits into the list.</summary>
@@ -392,24 +403,19 @@ internal sealed partial class ConfigWindow
             width: MirageUi.InputWidthFill);
 
         ImGui.TableNextColumn();
-        var actionKind = I18n.Get("config.cue.kind.action");
-        var memoKind = I18n.Get("config.cue.kind.memo");
-        var kindLabel = _newCueKind == TimelineCueKind.Memo ? memoKind : actionKind;
+        var kindLabel = CueKindLabel(_newCueKind);
         if (MirageUi.Dropdown(
                 string.Empty,
                 ref kindLabel,
-                [actionKind, memoKind],
+                CueKindLabels,
                 id: "kind",
                 allowClear: false,
                 width: MirageUi.InputWidthFill))
-        {
-            _newCueKind = string.Equals(kindLabel, memoKind, StringComparison.Ordinal)
-                ? TimelineCueKind.Memo
-                : TimelineCueKind.Action;
-        }
+            _newCueKind = ParseCueKindLabel(kindLabel);
 
         ImGui.TableNextColumn();
         var isMemo = _newCueKind == TimelineCueKind.Memo;
+        var isScene = _newCueKind == TimelineCueKind.SceneTransition;
         if (isMemo)
         {
             MirageUi.InputText(
@@ -418,6 +424,10 @@ internal sealed partial class ConfigWindow
                 256,
                 id: "memo",
                 width: MirageUi.InputWidthFill);
+        }
+        else if (isScene)
+        {
+            DrawSceneTransitionDraftFields();
         }
         else
         {
@@ -431,7 +441,7 @@ internal sealed partial class ConfigWindow
 
         ImGui.TableNextColumn();
         var canSubmit = TryParseCueTimeMmSs(_newCueTimeText, out _)
-                        && (isMemo || _newCueActionId != 0);
+                        && (isMemo || isScene || _newCueActionId != 0);
         if (MirageUi.IconButton(
                 FontAwesomeIcon.ArrowUpFromBracket,
                 "##submitCue",
@@ -450,20 +460,83 @@ internal sealed partial class ConfigWindow
         if (!TryParseCueTimeMmSs(_newCueTimeText, out var time))
             return;
 
-        var isMemo = _newCueKind == TimelineCueKind.Memo;
-        if (!isMemo && _newCueActionId == 0)
+        if (_newCueKind == TimelineCueKind.Action && _newCueActionId == 0)
             return;
 
         doc.Cues.Add(new TimelineCue
         {
             TimeOffsetSec = time,
-            Kind = isMemo ? TimelineCueKind.Memo : TimelineCueKind.Action,
-            ActionId = isMemo ? 0 : _newCueActionId,
-            Label = isMemo ? _newCueMemo : string.Empty,
+            Kind = _newCueKind,
+            ActionId = _newCueKind == TimelineCueKind.Action ? _newCueActionId : 0,
+            Label = _newCueKind == TimelineCueKind.Memo ? _newCueMemo : string.Empty,
+            SceneBefore = _newCueKind == TimelineCueKind.SceneTransition ? (uint)Math.Max(0, _newCueSceneBefore) : 0,
+            SceneAfter = _newCueKind == TimelineCueKind.SceneTransition ? (uint)Math.Max(0, _newCueSceneAfter) : 0,
         });
         PersistCueDocument(doc);
         ResetNewCueDraft();
         _newCueDraftDocId = doc.Id;
+    }
+
+    private static string[] CueKindLabels =>
+    [
+        I18n.Get("config.cue.kind.action"),
+        I18n.Get("config.cue.kind.memo"),
+        I18n.Get("config.cue.kind.scene_transition"),
+    ];
+
+    private static string CueKindLabel(TimelineCueKind kind) =>
+        kind switch
+        {
+            TimelineCueKind.Memo => I18n.Get("config.cue.kind.memo"),
+            TimelineCueKind.SceneTransition => I18n.Get("config.cue.kind.scene_transition"),
+            _ => I18n.Get("config.cue.kind.action"),
+        };
+
+    private static TimelineCueKind ParseCueKindLabel(string label)
+    {
+        if (string.Equals(label, I18n.Get("config.cue.kind.memo"), StringComparison.Ordinal))
+            return TimelineCueKind.Memo;
+        if (string.Equals(label, I18n.Get("config.cue.kind.scene_transition"), StringComparison.Ordinal))
+            return TimelineCueKind.SceneTransition;
+        return TimelineCueKind.Action;
+    }
+
+    private static bool DrawSceneTransitionFields(TimelineCue cue, string idPrefix)
+    {
+        var dirty = false;
+        var before = (int)cue.SceneBefore;
+        var after = (int)cue.SceneAfter;
+        var width = Math.Max(40f, (ImGui.GetContentRegionAvail().X - ImGui.CalcTextSize("→").X - ImGui.GetStyle().ItemSpacing.X * 2f) * 0.5f);
+
+        if (MirageUi.InputInt(string.Empty, ref before, step: 0, stepFast: 0, id: idPrefix + "Before", width: width))
+        {
+            cue.SceneBefore = (uint)Math.Max(0, before);
+            dirty = true;
+        }
+
+        ImGui.SameLine();
+        ImGui.TextUnformatted("→");
+        ImGui.SameLine();
+
+        if (MirageUi.InputInt(string.Empty, ref after, step: 0, stepFast: 0, id: idPrefix + "After", width: width))
+        {
+            cue.SceneAfter = (uint)Math.Max(0, after);
+            dirty = true;
+        }
+
+        return dirty;
+    }
+
+    private void DrawSceneTransitionDraftFields()
+    {
+        var width = Math.Max(40f, (ImGui.GetContentRegionAvail().X - ImGui.CalcTextSize("→").X - ImGui.GetStyle().ItemSpacing.X * 2f) * 0.5f);
+        MirageUi.InputInt(string.Empty, ref _newCueSceneBefore, step: 0, stepFast: 0, id: "draftSceneBefore", width: width);
+        _newCueSceneBefore = Math.Max(0, _newCueSceneBefore);
+        ImGui.SameLine();
+        ImGui.TextUnformatted("→");
+        ImGui.SameLine();
+        MirageUi.InputInt(string.Empty, ref _newCueSceneAfter, step: 0, stepFast: 0, id: "draftSceneAfter", width: width);
+        _newCueSceneAfter = Math.Max(0, _newCueSceneAfter);
     }
 
     /// <summary>Seconds ↁE<c>mm:ss</c> (negative times keep a leading minus). No milliseconds.</summary>

@@ -8,7 +8,7 @@
   "config.chat.deleted": "[Oracle] Deleted timeline",
   "config.save.tooltip.ok": "Save timeline name (renames file)",
   "config.save.tooltip.conflict": "Filename already exists: {0}.json",
-  "config.scene.tooltip": "0 = any scene.\nLive scene: {0}\n{1}",
+  "config.scene.tooltip": "Unchecked = any scene.\nLive scene: {0}\n{1}",
   "config.scene.tooltip.locked": "Locked scene: {0}",
   "config.scene.tooltip.unlocks": "Locks at countdown / combat start.",
   "config.match.matched": "Match - Current: {0}",
@@ -46,6 +46,7 @@
   "config.cue.hint.time": "mm:ss",
   "config.cue.kind.action": "Action",
   "config.cue.kind.memo": "Memo",
+  "config.cue.kind.scene_transition": "Scene Transition",
   "config.cue.pick_action": "Select action…",
   "fflogs.warn.credentials": "FFLogs API Client ID / Secret are not set. Register them in Settings → Import FFLogs Settings.",
   "fflogs.empty.no_fights": "No fights in this report.",
@@ -263,5 +264,8 @@
   "cmd.chat.overlay.timeline": "Timeline overlay",
   "cmd.chat.overlay.major": "Major overlay",
   "cmd.chat.overlay.icon": "Icon highlight",
-  "cmd.chat.unloaded": "[Oracle] Timeline unloaded."
+  "cmd.chat.unloaded": "[Oracle] Timeline unloaded.",
+  "overlay.scene_transition": "{0} -> {1}",
+  "autorecord.overlay.scene": "Scene {0}",
+  "config.scene.any": "Any"
 }

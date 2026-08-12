@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-08-12
+
+### Added
+
+- Experimental **Scene Transition** cue type (Before → After); on that scene edge, resync the running clock to the cue time without leaving combat
+- Auto Load **scene filter** checkbox (unchecked = any scene; checked = match SceneId, including `0` as a valid scene)
+- AutoRecord overlay shows the live scene next to the content name
+
+### Changed
+
+- Auto Load no longer switches timelines while the clock is running or while in combat; scene-based selection applies out of combat only
+- README: top screenshot, clearer `/xlsettings` / `/xlplugins` install steps, and a note that scene features are experimental
+
 ## [1.0.2] - 2026-08-12
 
 ### Added
@@ -59,7 +72,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Renamed the plugin from ForeCast to **Oracle** (commands: `/oracle`, `/or`)
 
-[Unreleased]: https://github.com/exatrines/Oracle/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/exatrines/Oracle/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/exatrines/Oracle/releases/tag/v1.0.3
 [1.0.2]: https://github.com/exatrines/Oracle/releases/tag/v1.0.2
 [1.0.1]: https://github.com/exatrines/Oracle/releases/tag/v1.0.1
 [1.0.0]: https://github.com/exatrines/Oracle/releases/tag/v1.0.0

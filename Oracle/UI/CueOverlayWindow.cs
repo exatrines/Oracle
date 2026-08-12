@@ -109,9 +109,7 @@ internal sealed class CueOverlayWindow : Window
 
         foreach (var item in upcoming)
         {
-            var label = item.Cue.Kind == TimelineCueKind.Memo
-                ? (string.IsNullOrWhiteSpace(item.Cue.Label) ? I18n.Get("overlay.memo_fallback") : item.Cue.Label)
-                : ActionLookup.GetName(item.Cue.ActionId);
+            var label = ActionLookup.GetOverlayLabel(item.Cue);
 
             var remain = item.RemainingSeconds;
             var highlighting = item.IsHighlighting;

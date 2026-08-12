@@ -300,11 +300,7 @@ internal sealed class MajorOverlayWindow : Window
             else
             {
                 drawList.AddRectFilled(iconMin, iconMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0.15f, 0.25f, 0.4f, 0.95f)), 3f);
-                var memo = string.IsNullOrWhiteSpace(item.Cue.Label)
-                    ? I18n.Get("overlay.memo_abbrev")
-                    : item.Cue.Label;
-                if (memo.Length > 4)
-                    memo = memo[..4];
+                var memo = ActionLookup.GetMajorAbbrev(item.Cue);
                 var memoSize = ImGui.CalcTextSize(memo);
                 drawList.AddText(
                     iconMin + new Vector2((iconSize - memoSize.X) * 0.5f, (iconSize - memoSize.Y) * 0.5f),

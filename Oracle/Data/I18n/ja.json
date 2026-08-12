@@ -8,7 +8,7 @@
   "config.chat.deleted": "[Oracle] タイムラインを削除しました",
   "config.save.tooltip.ok": "タイムライン名を保存（ファイル名も変更）",
   "config.save.tooltip.conflict": "同名のファイルが既にあります: {0}.json",
-  "config.scene.tooltip": "0 = 任意のシーン\n現在のシーン: {0}\n{1}",
+  "config.scene.tooltip": "オフ = すべてのシーン\n現在のシーン: {0}\n{1}",
   "config.scene.tooltip.locked": "ロック中のシーン: {0}",
   "config.scene.tooltip.unlocks": "カウントダウン / 戦闘開始時にロックされます。",
   "config.match.matched": "一致 - 現在: {0}",
@@ -46,6 +46,7 @@
   "config.cue.hint.time": "mm:ss",
   "config.cue.kind.action": "アクション",
   "config.cue.kind.memo": "メモ",
+  "config.cue.kind.scene_transition": "シーン切替",
   "config.cue.pick_action": "アクションを選択…",
   "fflogs.warn.credentials": "FFLogs API の Client ID / Secret が未設定です。Settings の Import FFLogs Settings で登録してください。",
   "fflogs.empty.no_fights": "このレポートにファイトがありません。",
@@ -263,5 +264,8 @@
   "cmd.chat.overlay.timeline": "タイムラインオーバーレイ",
   "cmd.chat.overlay.major": "メジャーオーバーレイ",
   "cmd.chat.overlay.icon": "アイコンハイライト",
-  "cmd.chat.unloaded": "[Oracle] タイムラインをアンロードしました。"
+  "cmd.chat.unloaded": "[Oracle] タイムラインをアンロードしました。",
+  "overlay.scene_transition": "{0} → {1}",
+  "autorecord.overlay.scene": "シーン {0}",
+  "config.scene.any": "すべて"
 }

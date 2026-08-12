@@ -10,6 +10,7 @@ internal sealed class FFLogsImportOptions
     public uint ContentFinderConditionId { get; init; }
     public byte ClassJobLevel { get; init; }
     public uint SceneId { get; init; }
+    public bool SceneFilterEnabled { get; init; }
     public bool AutoLoadEnabled { get; init; } = true;
 }
 
@@ -62,6 +63,7 @@ internal static class FFLogsImportService
             ContentFinderConditionId = options.ContentFinderConditionId,
             ClassJobLevel = options.ClassJobLevel,
             SceneId = options.SceneId,
+            SceneFilterEnabled = options.SceneFilterEnabled,
             Cues = cues
                 .Select(c => new TimelineCue
                 {
@@ -69,6 +71,8 @@ internal static class FFLogsImportService
                     Kind = c.Kind,
                     ActionId = c.ActionId,
                     Label = c.Kind == TimelineCueKind.Memo ? c.Label : string.Empty,
+                    SceneBefore = c.SceneBefore,
+                    SceneAfter = c.SceneAfter,
                 })
                 .ToList(),
         };

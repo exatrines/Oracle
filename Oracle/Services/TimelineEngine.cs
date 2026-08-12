@@ -49,6 +49,8 @@ internal sealed class TimelineEngine : IDisposable
     private uint _manualLoadTerritory;
     private uint _lastPlayerJobId;
     private bool _hasTrackedPlayerJob;
+    private uint _prevGameSceneId;
+    private bool _hasPrevGameScene;
 
     // --- Lifecycle ---
 
@@ -111,11 +113,14 @@ internal sealed class TimelineEngine : IDisposable
             _manualLoadId = null;
         }
 
+        // Clock running or in combat: keep the loaded timeline (scene switches do not change docs).
+        if (_running || _combat.InCombat)
+            return _activeDoc;
+
         var territory = PluginServices.ClientState.TerritoryType;
         var player = PluginServices.ObjectTable.LocalPlayer;
         var playerJob = player?.ClassJob.RowId ?? 0;
-        // While running, use the scene locked at countdown/combat start.
-        var scene = EffectiveSceneId;
+        var scene = ReadGameSceneId();
 
         var candidates = _store.Documents
             .Select((d, index) => (Doc: d, Index: index))
@@ -125,7 +130,7 @@ internal sealed class TimelineEngine : IDisposable
                 && MatchesTerritory(x.Doc, territory)
                 && MatchesJob(x.Doc, playerJob)
                 && MatchesScene(x.Doc, scene))
-            // Exact SceneId match beats SceneId=0; on ties, earlier in list wins.
+            // Exact scene filter beats Any; on ties, earlier in list wins.
             .OrderByDescending(x => MatchSpecificity(x.Doc, scene))
             .ThenBy(x => x.Index)
             .Select(x => x.Doc)
@@ -141,12 +146,12 @@ internal sealed class TimelineEngine : IDisposable
         doc.ClassJobId != 0 && playerJob != 0 && doc.ClassJobId == playerJob;
 
     private static bool MatchesScene(TimelineDocument doc, uint scene) =>
-        doc.SceneId == 0 || doc.SceneId == scene;
+        !doc.SceneFilterEnabled || doc.SceneId == scene;
 
     private static int MatchSpecificity(TimelineDocument doc, uint scene)
     {
         var score = 0;
-        if (doc.SceneId != 0 && doc.SceneId == scene)
+        if (doc.SceneFilterEnabled && doc.SceneId == scene)
             score += 1_000;
         return score;
     }
@@ -233,10 +238,33 @@ internal sealed class TimelineEngine : IDisposable
 
     private void StartClock(TimelineDocument doc, float clockOffset, bool preview)
     {
-        // Capture scene at countdown / combat (or preview) start; keep it until StopClock.
+        // Capture scene at countdown / combat (or preview) start; keep until StopClock / resync.
         _lockedSceneId = ReadGameSceneId();
         _previewMode = preview;
         Activate(doc, clockOffset);
+    }
+
+    private void ResyncClockTo(float timeOffsetSec)
+    {
+        if (!_running || _activeDoc == null)
+            return;
+
+        _lockedSceneId = ReadGameSceneId();
+        _syncUtc = DateTime.UtcNow;
+        _clockOffset = timeOffsetSec;
+        _completedCueIds.Clear();
+        _startedHighlightIds.Clear();
+        _highlights.Clear();
+        _actionUse.Reset();
+
+        var elapsed = ElapsedSeconds;
+        foreach (var cue in _activeDoc.Cues)
+        {
+            if (cue.Kind == TimelineCueKind.SceneTransition)
+                continue;
+            if (GetDisplayOffset(cue) - elapsed < -0.05f)
+                _completedCueIds.Add(cue.Id);
+        }
     }
 
     private static void NotifyTimelineLoad(bool manual, TimelineDocument doc)
@@ -269,6 +297,7 @@ internal sealed class TimelineEngine : IDisposable
         _activeDoc = null;
         _manualLoadId = null;
         _manualLoadTerritory = 0;
+        _hasPrevGameScene = false;
     }
 
     private void Activate(TimelineDocument doc, float clockOffset)
@@ -285,6 +314,8 @@ internal sealed class TimelineEngine : IDisposable
         var elapsed = ElapsedSeconds;
         foreach (var cue in doc.Cues)
         {
+            if (cue.Kind == TimelineCueKind.SceneTransition)
+                continue;
             if (GetDisplayOffset(cue) - elapsed < -0.05f)
                 _completedCueIds.Add(cue.Id);
         }
@@ -294,6 +325,7 @@ internal sealed class TimelineEngine : IDisposable
 
     public void Update()
     {
+        _combat.Update();
         UpdateHighlights();
         ClearManualLoadOnTerritoryChange();
         ResetLoadOnJobChange();
@@ -306,7 +338,10 @@ internal sealed class TimelineEngine : IDisposable
         ApplyCombatEdges(doc);
 
         if (_running)
+        {
+            ApplySceneTransitions();
             ProcessCueFires();
+        }
 
         DrainUsedActions();
     }
@@ -352,6 +387,10 @@ internal sealed class TimelineEngine : IDisposable
 
     private bool SyncActiveDocument()
     {
+        // While the clock is running, never switch timelines via Auto Load.
+        if (_running && _activeDoc != null)
+            return true;
+
         var doc = ResolveDocumentForPlayer();
         if (doc == null)
         {
@@ -386,11 +425,38 @@ internal sealed class TimelineEngine : IDisposable
 
     private void ApplyCombatEdges(TimelineDocument doc)
     {
-        _combat.Update();
         if (_combat.JustLeftCombat)
             StopClock();
         else if (_combat.JustEnteredCombat && !_running)
             StartClock(doc, clockOffset: ResolveCombatStartOffset(), preview: false);
+    }
+
+    private void ApplySceneTransitions()
+    {
+        var scene = ReadGameSceneId();
+        if (!_hasPrevGameScene)
+        {
+            _prevGameSceneId = scene;
+            _hasPrevGameScene = true;
+            return;
+        }
+
+        var prev = _prevGameSceneId;
+        _prevGameSceneId = scene;
+        if (prev == scene || _activeDoc == null || !_running)
+            return;
+
+        foreach (var cue in _activeDoc.Cues)
+        {
+            if (cue.Kind != TimelineCueKind.SceneTransition)
+                continue;
+            if (cue.SceneBefore == cue.SceneAfter)
+                continue;
+            if (prev != cue.SceneBefore || scene != cue.SceneAfter)
+                continue;
+
+            ResyncClockTo(cue.TimeOffsetSec);
+        }
     }
 
     /// <summary>
@@ -428,6 +494,8 @@ internal sealed class TimelineEngine : IDisposable
         var elapsed = ElapsedSeconds;
         foreach (var cue in _activeDoc.Cues)
         {
+            if (cue.Kind == TimelineCueKind.SceneTransition)
+                continue;
             if (_completedCueIds.Contains(cue.Id) || _startedHighlightIds.Contains(cue.Id))
                 continue;
 

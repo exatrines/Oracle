@@ -21,6 +21,7 @@ internal sealed class AutoRecordImportPanel
     private uint _contentFinderConditionId;
     private byte _zoneClassJobLevel;
     private int _sceneId;
+    private bool _sceneFilterEnabled;
     private bool _autoLoadEnabled = true;
     private string _zoneSearchFilter = string.Empty;
     private string _zoneLabel = string.Empty;
@@ -152,9 +153,16 @@ internal sealed class AutoRecordImportPanel
     private void DrawSceneField()
     {
         var sceneId = _sceneId;
-        if (MirageUi.InputInt(I18n.Get("config.label.scene_id"), ref sceneId, step: 0, stepFast: 0, id: "autoRecordScene"))
+        var filter = _sceneFilterEnabled;
+        if (SceneFilterField.DrawLabeled(
+                I18n.Get("config.label.scene_id"),
+                "autoRecordScene",
+                ref filter,
+                ref sceneId))
+        {
+            _sceneFilterEnabled = filter;
             _sceneId = Math.Max(0, sceneId);
-        _sceneId = Math.Max(0, _sceneId);
+        }
     }
 
     private void DrawCreateButton()
@@ -193,6 +201,7 @@ internal sealed class AutoRecordImportPanel
         _contentFinderConditionId = doc.ContentFinderConditionId;
         _zoneClassJobLevel = doc.ClassJobLevel;
         _sceneId = (int)doc.SceneId;
+        _sceneFilterEnabled = doc.SceneFilterEnabled;
         _autoLoadEnabled = doc.AutoLoadEnabled;
         _zoneLabel = _territoryTypeId == 0
             ? string.Empty
@@ -254,6 +263,7 @@ internal sealed class AutoRecordImportPanel
             ClassJobLevel = _zoneClassJobLevel,
             ClassJobId = _classJobId,
             SceneId = (uint)_sceneId,
+            SceneFilterEnabled = _sceneFilterEnabled,
             Cues = cues,
         };
 

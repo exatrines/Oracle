@@ -164,6 +164,18 @@ internal sealed class CueOverlayWindow : Window
 
                     textX = origin.X + 34f;
                 }
+
+                var targetIcon = CueTargetCatalog.GetIconWrap(item.Cue);
+                if (targetIcon != null)
+                {
+                    var targetSize = 20f;
+                    var targetPos = new Vector2(textX, y + 5f);
+                    drawList.AddImage(
+                        targetIcon.Handle,
+                        targetPos,
+                        targetPos + new Vector2(targetSize, targetSize));
+                    textX += targetSize + 4f;
+                }
             }
 
             var text = item.IsPostHighlight

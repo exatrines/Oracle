@@ -42,6 +42,9 @@ internal sealed partial class ConfigWindow : Window
     private TimelineCueKind _newCueKind = TimelineCueKind.Action;
     private string _newCueMemo = string.Empty;
     private uint _newCueActionId;
+    private CueTargetKind _newCueTargetKind;
+    private uint _newCueTargetJobId;
+    private CueTargetRole _newCueTargetRole;
     private int _newCueSceneBefore;
     private int _newCueSceneAfter;
     private string? _newCueDraftDocId;

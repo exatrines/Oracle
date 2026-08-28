@@ -85,7 +85,8 @@ internal sealed unsafe class HotbarHighlightService
     private Dictionary<uint, bool> CollectHighlightActions()
     {
         var map = new Dictionary<uint, bool>();
-        foreach (var item in _engine.GetUpcoming(C.LookaheadSeconds))
+        var fetchLookahead = Math.Max(0.5f, C.ActionHighlightBeforeSeconds);
+        foreach (var item in _engine.GetUpcoming(fetchLookahead))
         {
             if (!item.IsHighlighting)
                 continue;

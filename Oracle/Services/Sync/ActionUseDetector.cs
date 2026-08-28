@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Numerics;
+using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Hooking;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Character;
@@ -9,14 +10,14 @@ namespace Oracle.Services;
 
 /// <summary>
 /// Confirms local-player ability execution via ActionEffectHandler.Receive (server ActionEffect).
-/// Unlike UseAction, this ignores hotbar spam / queue (先行�E劁E that does not actually fire.
+/// Unlike UseAction, this ignores hotbar spam / queue that does not actually fire.
 /// </summary>
 internal sealed unsafe class ActionUseDetector : IDisposable
 {
     private readonly ConcurrentQueue<uint> _pendingActionIds = new();
     private Hook<ActionEffectHandler.Delegates.Receive>? _receiveHook;
 
-    public event Action<uint>? ActionUsed;
+    public event Action<uint, uint>? ActionUsed;
 
     public void Subscribe()
     {
@@ -108,12 +109,59 @@ internal sealed unsafe class ActionUseDetector : IDisposable
             if (recordId != actionId)
                 EnqueueActionId(recordId);
 
-            ActionUsed?.Invoke(recordId);
+            var targetJobId = ResolveOtherPlayerTargetJobId(casterEntityId, header, targetEntityIds);
+            ActionUsed?.Invoke(recordId, targetJobId);
         }
         catch (Exception ex)
         {
             PluginServices.Log.Error(ex, "ActionEffect Receive detour failed");
         }
+    }
+
+    private static uint ResolveOtherPlayerTargetJobId(
+        uint casterEntityId,
+        ActionEffectHandler.Header* header,
+        GameObjectId* targetEntityIds)
+    {
+        if (targetEntityIds == null)
+            return 0;
+
+        var count = header->NumTargets;
+        if (count <= 0)
+            return 0;
+
+        for (var i = 0; i < count; i++)
+        {
+            var entityId = targetEntityIds[i].ObjectId;
+            if (entityId == 0 || entityId == 0xE0000000 || entityId == casterEntityId)
+                continue;
+
+            foreach (var obj in PluginServices.ObjectTable)
+            {
+                if (obj == null || obj.EntityId != entityId)
+                    continue;
+                // 1 = Player / Pc in both Dalamud and FFXIVClientStructs ObjectKind.
+                if ((int)obj.ObjectKind != 1)
+                    continue;
+
+                var jobId = ReadClassJobId(obj);
+                if (jobId != 0)
+                    return jobId;
+            }
+        }
+
+        return 0;
+    }
+
+    private static uint ReadClassJobId(IGameObject obj)
+    {
+        if (obj is IBattleChara battle)
+            return battle.ClassJob.RowId;
+
+        var ch = (Character*)obj.Address;
+        if (ch == null)
+            return 0;
+        return ch->CharacterData.ClassJob;
     }
 
     private void EnqueueActionId(uint actionId)

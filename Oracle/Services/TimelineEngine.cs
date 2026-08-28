@@ -538,8 +538,8 @@ internal sealed class TimelineEngine : IDisposable
             var highlighting = IsCueBeforeHighlightActive(remaining)
                 || _highlights.Any(h => h.CueId == cue.Id);
 
-            // Only clear cues that are highlighting, or still upcoming within lookahead.
-            if (!highlighting && (remaining < -0.5f || remaining > C.LookaheadSeconds))
+            // Only clear cues that are highlighting, or still upcoming within the complete window.
+            if (!highlighting && (remaining < -0.5f || remaining > C.ActionCompleteWindowSeconds))
                 continue;
 
             if (bestCueId == null

@@ -34,6 +34,7 @@ internal sealed class FFLogsCastEvent
 {
     public double Timestamp { get; init; }
     public uint AbilityGameId { get; init; }
+    public int TargetId { get; init; }
 }
 
 internal sealed class FFLogsReportMeta
@@ -265,7 +266,28 @@ internal sealed class FFLogsClient : IDisposable
             {
                 Timestamp = ts,
                 AbilityGameId = ability,
+                TargetId = ReadTargetId(node),
             };
+        }
+    }
+
+    private static int ReadTargetId(JsonObject node)
+    {
+        var raw = node["targetID"] ?? node["targetId"];
+        if (raw == null || raw.GetValueKind() == JsonValueKind.Null)
+            return 0;
+
+        try
+        {
+            return raw.GetValue<int>();
+        }
+        catch (InvalidOperationException)
+        {
+            return 0;
+        }
+        catch (FormatException)
+        {
+            return 0;
         }
     }
 

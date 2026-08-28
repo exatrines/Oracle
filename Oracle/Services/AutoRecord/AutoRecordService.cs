@@ -30,7 +30,7 @@ internal sealed class AutoRecordService : IDisposable
 
     private const float PrebufferWindowSec = 1.5f;
     private const int PrebufferMaxEntries = 32;
-    private readonly List<(uint ActionId, DateTime Utc)> _prebuffer = [];
+    private readonly List<(uint ActionId, uint TargetJobId, DateTime Utc)> _prebuffer = [];
 
     public bool IsRecording
     {
@@ -270,6 +270,7 @@ internal sealed class AutoRecordService : IDisposable
                     Kind = TimelineCueKind.Action,
                     ActionId = entry.ActionId,
                 });
+                CueTargetCatalog.SetJob(_cues[^1], entry.TargetJobId);
             }
 
             CaptureContext();
@@ -374,11 +375,16 @@ internal sealed class AutoRecordService : IDisposable
             SceneId = _sceneId,
             SceneFilterEnabled = true,
             Cues = _cues
-                .Select(c => new TimelineCue
+                .Select(c =>
                 {
-                    TimeOffsetSec = c.TimeOffsetSec,
-                    Kind = TimelineCueKind.Action,
-                    ActionId = c.ActionId,
+                    var copy = new TimelineCue
+                    {
+                        TimeOffsetSec = c.TimeOffsetSec,
+                        Kind = TimelineCueKind.Action,
+                        ActionId = c.ActionId,
+                    };
+                    CueTargetCatalog.Copy(c, copy);
+                    return copy;
                 })
                 .ToList(),
         };
@@ -398,7 +404,7 @@ internal sealed class AutoRecordService : IDisposable
         }
     }
 
-    private void OnActionUsed(uint actionId)
+    private void OnActionUsed(uint actionId, uint targetJobId)
     {
         if (actionId == 0 || !C.AutoRecordEnabled)
             return;
@@ -414,12 +420,14 @@ internal sealed class AutoRecordService : IDisposable
                 var offset = (float)(DateTime.UtcNow - _startedUtc).TotalSeconds;
                 offset = MathF.Round(offset, 1);
 
-                _cues.Add(new TimelineCue
+                var cue = new TimelineCue
                 {
                     TimeOffsetSec = offset,
                     Kind = TimelineCueKind.Action,
                     ActionId = actionId,
-                });
+                };
+                CueTargetCatalog.SetJob(cue, targetJobId);
+                _cues.Add(cue);
                 return;
             }
 
@@ -429,7 +437,7 @@ internal sealed class AutoRecordService : IDisposable
 
             var now = DateTime.UtcNow;
             PrunePrebufferUnlocked(now);
-            _prebuffer.Add((actionId, now));
+            _prebuffer.Add((actionId, targetJobId, now));
             if (_prebuffer.Count > PrebufferMaxEntries)
                 _prebuffer.RemoveAt(0);
         }

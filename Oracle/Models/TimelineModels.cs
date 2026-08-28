@@ -74,9 +74,38 @@ public sealed class TimelineCue
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public string Label { get; set; } = string.Empty;
 
+    /// <summary>None / job / role. Empty (None) = no party target.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public CueTargetKind TargetKind { get; set; }
+
+    /// <summary>ClassJob row id when <see cref="TargetKind"/> is Job.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public uint TargetJobId { get; set; }
+
+    /// <summary>Role when <see cref="TargetKind"/> is Role.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public CueTargetRole TargetRole { get; set; }
+
     /// <summary>From-scene for <see cref="TimelineCueKind.SceneTransition"/>.</summary>
     public uint SceneBefore { get; set; }
 
     /// <summary>To-scene for <see cref="TimelineCueKind.SceneTransition"/>.</summary>
     public uint SceneAfter { get; set; }
+}
+
+public enum CueTargetKind
+{
+    None = 0,
+    Job = 1,
+    Role = 2,
+}
+
+public enum CueTargetRole
+{
+    None = 0,
+    Tank = 1,
+    Healer = 2,
+    Melee = 3,
+    Ranged = 4,
+    Caster = 5,
 }

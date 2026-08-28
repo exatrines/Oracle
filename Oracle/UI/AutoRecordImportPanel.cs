@@ -234,11 +234,16 @@ internal sealed class AutoRecordImportPanel
 
         var cues = _loaded.Cues
             .Where(c => c.Kind == TimelineCueKind.Action && allowed.Contains(c.ActionId))
-            .Select(c => new TimelineCue
+            .Select(c =>
             {
-                TimeOffsetSec = c.TimeOffsetSec,
-                Kind = TimelineCueKind.Action,
-                ActionId = c.ActionId,
+                var copy = new TimelineCue
+                {
+                    TimeOffsetSec = c.TimeOffsetSec,
+                    Kind = TimelineCueKind.Action,
+                    ActionId = c.ActionId,
+                };
+                CueTargetCatalog.Copy(c, copy);
+                return copy;
             })
             .ToList();
 

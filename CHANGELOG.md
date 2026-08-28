@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-08-28
+
+### Added
+
+- Cue table: right-click a row to **Insert Row Above** / **Insert Row Below** (empty action, same time)
+- Action cues can store a **target** (job or role). AutoRecord and FFLogs import fill the job from the party member who was hit; the editor picker defaults to none
+- Timeline overlay shows the target icon next to the action; Major overlay draws a role-colored frame and a job/role badge on the action icon
+- Shared **Complete window** setting (Highlight Setting): a used action hides a matching cue in this window (default 10s). Timeline, Major, and Hotbar share it
+
+### Changed
+
+- Cue table time edits apply only on confirm (Enter or the check control), not while typing
+- Timeline overlay **Lookahead** is list display only; Major uses Before/After; hotbar highlight uses the highlight duration
+
 ## [1.0.3] - 2026-08-12
 
 ### Added
@@ -72,7 +86,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Renamed the plugin from ForeCast to **Oracle** (commands: `/oracle`, `/or`)
 
-[Unreleased]: https://github.com/exatrines/Oracle/compare/v1.0.3...HEAD
+[Unreleased]: https://github.com/exatrines/Oracle/compare/v1.0.4...HEAD
+[1.0.4]: https://github.com/exatrines/Oracle/releases/tag/v1.0.4
 [1.0.3]: https://github.com/exatrines/Oracle/releases/tag/v1.0.3
 [1.0.2]: https://github.com/exatrines/Oracle/releases/tag/v1.0.2
 [1.0.1]: https://github.com/exatrines/Oracle/releases/tag/v1.0.1

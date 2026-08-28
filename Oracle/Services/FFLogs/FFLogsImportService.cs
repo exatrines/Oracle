@@ -19,7 +19,9 @@ internal static class FFLogsImportService
     /// <summary>Build one cue per cast (no Import Action filter).</summary>
     public static List<TimelineCue> BuildAllCues(
         FFLogsFightInfo fight,
-        IReadOnlyList<FFLogsCastEvent> casts)
+        IReadOnlyList<FFLogsCastEvent> casts,
+        IReadOnlyList<FFLogsActorInfo> players,
+        int sourceId)
     {
         var cues = new List<TimelineCue>(casts.Count);
         foreach (var cast in casts.OrderBy(c => c.Timestamp))
@@ -32,6 +34,7 @@ internal static class FFLogsImportService
                 Kind = TimelineCueKind.Action,
                 ActionId = cast.AbilityGameId,
             });
+            CueTargetCatalog.SetJob(cues[^1], ResolveCastTargetJobId(cast, players, sourceId));
         }
 
         return cues;
@@ -71,11 +74,32 @@ internal static class FFLogsImportService
                     Kind = c.Kind,
                     ActionId = c.ActionId,
                     Label = c.Kind == TimelineCueKind.Memo ? c.Label : string.Empty,
+                    TargetKind = c.Kind == TimelineCueKind.Action ? c.TargetKind : CueTargetKind.None,
+                    TargetJobId = c.Kind == TimelineCueKind.Action ? c.TargetJobId : 0,
+                    TargetRole = c.Kind == TimelineCueKind.Action ? c.TargetRole : CueTargetRole.None,
                     SceneBefore = c.SceneBefore,
                     SceneAfter = c.SceneAfter,
                 })
                 .ToList(),
         };
+    }
+
+    private static uint ResolveCastTargetJobId(
+        FFLogsCastEvent cast,
+        IReadOnlyList<FFLogsActorInfo> players,
+        int sourceId)
+    {
+        if (cast.TargetId <= 0 || cast.TargetId == sourceId)
+            return 0;
+
+        foreach (var actor in players)
+        {
+            if (actor.Id != cast.TargetId)
+                continue;
+            return ResolveClassJobId(actor.SubType);
+        }
+
+        return 0;
     }
 
     private static string DefaultName(

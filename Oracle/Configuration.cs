@@ -24,6 +24,9 @@ public sealed class Configuration : IPluginConfiguration
 
     // --- Action highlight (shared by Timeline / Major / Hotbar) ---
 
+    /// <summary>How far ahead a used action can complete a matching cue.</summary>
+    public float ActionCompleteWindowSeconds { get; set; } = 10f;
+
     public float ActionHighlightBeforeSeconds { get; set; } = 3f;
     public float ActionHighlightBeforeLineThickness { get; set; } = 3f;
     public Vector4 ActionHighlightBeforeLineColor { get; set; } = new(1f, 0.9f, 0.15f, 1f);

@@ -78,6 +78,9 @@ internal sealed class TimelineStore
                     Kind = c.Kind,
                     ActionId = c.ActionId,
                     Label = c.Kind == TimelineCueKind.Memo ? c.Label : string.Empty,
+                    TargetKind = c.Kind == TimelineCueKind.Action ? c.TargetKind : CueTargetKind.None,
+                    TargetJobId = c.Kind == TimelineCueKind.Action ? c.TargetJobId : 0,
+                    TargetRole = c.Kind == TimelineCueKind.Action ? c.TargetRole : CueTargetRole.None,
                     SceneBefore = c.SceneBefore,
                     SceneAfter = c.SceneAfter,
                 })

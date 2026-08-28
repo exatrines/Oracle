@@ -445,7 +445,10 @@ internal sealed class FFLogsImportPanel : IDisposable
     {
         try
         {
-            var allCues = FFLogsImportService.BuildAllCues(fight, casts);
+            var players = _meta == null
+                ? []
+                : FFLogsImportService.PlayersForFight(_meta, fight);
+            var allCues = FFLogsImportService.BuildAllCues(fight, casts, players, player.Id);
             var cues = allCues
                 .Where(cue => allowed.Contains(cue.ActionId))
                 .ToList();

@@ -104,8 +104,7 @@ internal sealed class MajorOverlayWindow : Window
     /// <summary>After = left of 0s (past); Before = right of 0s (future).</summary>
     private List<UpcomingCue> CollectUpcomingOnAxis(float pastSeconds, float futureSeconds)
     {
-        var fetchLookahead = Math.Max(C.LookaheadSeconds, futureSeconds + 0.5f);
-        return _engine.GetUpcoming(fetchLookahead)
+        return _engine.GetUpcoming(futureSeconds + 0.5f)
             .Where(u =>
             {
                 var axisSec = u.RemainingSeconds;
@@ -288,6 +287,9 @@ internal sealed class MajorOverlayWindow : Window
                 isPost ? C.ActionHighlightAfterLineThickness : C.ActionHighlightBeforeLineThickness);
             var blink = isPost ? C.ActionHighlightAfterBlink : C.ActionHighlightBeforeBlink;
             var showLine = highlighting && (!blink || blinkPhaseOn);
+            var targetRole = item.Cue.Kind == TimelineCueKind.Action
+                ? CueTargetCatalog.GetRole(item.Cue)
+                : CueTargetRole.None;
 
             if (item.Cue.Kind == TimelineCueKind.Action)
             {
@@ -296,6 +298,33 @@ internal sealed class MajorOverlayWindow : Window
                     drawList.AddImage(icon.Handle, iconMin, iconMax);
                 else
                     drawList.AddRectFilled(iconMin, iconMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.2f, 0.2f, 0.9f)), 3f);
+
+                if (targetRole != CueTargetRole.None)
+                {
+                    var roleColor = ImGui.ColorConvertFloat4ToU32(CueTargetCatalog.GetRoleColor(targetRole));
+                    drawList.AddRect(
+                        iconMin,
+                        iconMax,
+                        roleColor,
+                        3f,
+                        ImDrawFlags.None,
+                        Math.Max(2f, iconSize * 0.08f));
+
+                    var targetIcon = CueTargetCatalog.GetIconWrap(item.Cue);
+                    if (targetIcon != null)
+                    {
+                        var badge = Math.Max(12f, iconSize * 0.58f);
+                        var badgeMin = new Vector2(iconMax.X - badge, iconMax.Y - badge);
+                        drawList.AddImage(targetIcon.Handle, badgeMin, iconMax);
+                        drawList.AddRect(
+                            badgeMin,
+                            iconMax,
+                            ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, 0.85f)),
+                            2f,
+                            ImDrawFlags.None,
+                            1.5f);
+                    }
+                }
             }
             else
             {
@@ -310,9 +339,18 @@ internal sealed class MajorOverlayWindow : Window
 
             if (showLine)
             {
+                var highlightMin = iconMin;
+                var highlightMax = iconMax;
+                if (targetRole != CueTargetRole.None)
+                {
+                    var pad = Math.Max(2f, lineThickness);
+                    highlightMin -= new Vector2(pad, pad);
+                    highlightMax += new Vector2(pad, pad);
+                }
+
                 drawList.AddRect(
-                    iconMin,
-                    iconMax,
+                    highlightMin,
+                    highlightMax,
                     ImGui.ColorConvertFloat4ToU32(lineColorVec),
                     3f,
                     ImDrawFlags.None,

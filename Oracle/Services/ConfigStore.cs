@@ -78,6 +78,8 @@ internal sealed class ConfigStore
         {
             if (cue.Kind == TimelineCueKind.Action)
                 cue.Label = string.Empty;
+            else
+                CueTargetCatalog.Clear(cue);
         }
     }
 

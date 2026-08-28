@@ -277,6 +277,8 @@ internal sealed class PluginSettingsWindow : Window
             C.Save();
         }
 
+        MirageUi.Text(I18n.Get("settings.help.lookahead"), MirageUi.Color.Secondary);
+
         var maxRows = C.OverlayMaxRows;
         if (MirageUi.SliderInt(I18n.Get("settings.slider.max_rows"), ref maxRows, 1, 30))
         {
@@ -445,6 +447,20 @@ internal sealed class PluginSettingsWindow : Window
     private static void DrawActionHighlightSettings()
     {
         MirageUi.Header(I18n.Get("settings.header.action_highlight"));
+
+        var completeWindow = C.ActionCompleteWindowSeconds;
+        if (MirageUi.SliderFloat(
+                I18n.Get("settings.slider.complete_window"),
+                ref completeWindow,
+                5f,
+                60f,
+                "%.0f"))
+        {
+            C.ActionCompleteWindowSeconds = Math.Clamp(completeWindow, 5f, 60f);
+            C.Save();
+        }
+
+        MirageUi.Text(I18n.Get("settings.help.complete_window"), MirageUi.Color.Secondary);
 
         DrawHighlightPhaseSettings(
             I18n.Get("settings.subheader.before"),

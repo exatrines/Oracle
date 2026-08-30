@@ -130,24 +130,42 @@ internal sealed unsafe class ActionUseDetector : IDisposable
         if (count <= 0)
             return 0;
 
+        uint foundEntityId = 0;
+        uint foundJobId = 0;
+
         for (var i = 0; i < count; i++)
         {
             var entityId = targetEntityIds[i].ObjectId;
             if (entityId == 0 || entityId == 0xE0000000 || entityId == casterEntityId)
                 continue;
+            if (entityId == foundEntityId)
+                continue;
 
-            foreach (var obj in PluginServices.ObjectTable)
-            {
-                if (obj == null || obj.EntityId != entityId)
-                    continue;
-                // 1 = Player / Pc in both Dalamud and FFXIVClientStructs ObjectKind.
-                if ((int)obj.ObjectKind != 1)
-                    continue;
+            var jobId = ReadOtherPlayerJobId(entityId);
+            if (jobId == 0)
+                continue;
 
-                var jobId = ReadClassJobId(obj);
-                if (jobId != 0)
-                    return jobId;
-            }
+            if (foundEntityId != 0)
+                return 0;
+
+            foundEntityId = entityId;
+            foundJobId = jobId;
+        }
+
+        return foundJobId;
+    }
+
+    private static uint ReadOtherPlayerJobId(uint entityId)
+    {
+        foreach (var obj in PluginServices.ObjectTable)
+        {
+            if (obj == null || obj.EntityId != entityId)
+                continue;
+            // 1 = Player / Pc in both Dalamud and FFXIVClientStructs ObjectKind.
+            if ((int)obj.ObjectKind != 1)
+                continue;
+
+            return ReadClassJobId(obj);
         }
 
         return 0;

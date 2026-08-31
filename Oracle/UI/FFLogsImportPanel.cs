@@ -27,6 +27,7 @@ internal sealed class FFLogsImportPanel : IDisposable
     private int _sceneId;
     private bool _sceneFilterEnabled;
     private bool _autoLoadEnabled = true;
+    private bool _importEnemyHitMemos;
     private string _zoneSearchFilter = string.Empty;
     private string _zoneLabel = string.Empty;
     private int _zoneAppliedForFightId = -1;
@@ -80,6 +81,7 @@ internal sealed class FFLogsImportPanel : IDisposable
             return;
 
         DrawTimelineMeta();
+        DrawEnemyHitMemosOption();
         DrawAutoLoadSection();
         DrawCreateButton(fight, player);
     }
@@ -232,6 +234,13 @@ internal sealed class FFLogsImportPanel : IDisposable
         DrawZoneField(editable: true, id: "fflogsZoneGroup");
     }
 
+    private void DrawEnemyHitMemosOption()
+    {
+        var importMemos = _importEnemyHitMemos;
+        if (MirageUi.Checkbox(I18n.Get("fflogs.checkbox.enemy_hit_memos"), ref importMemos))
+            _importEnemyHitMemos = importMemos;
+    }
+
     private void DrawAutoLoadSection()
     {
         MirageUi.SubHeader(I18n.Get("config.subheader.auto_load"));
@@ -248,13 +257,14 @@ internal sealed class FFLogsImportPanel : IDisposable
     {
         MirageUi.PaddedSeparator();
         var allowed = C.GetFFLogsImportActionIds(ResolveClassJobId(player));
-        using (ImRaii.Disabled(_busy || allowed.Count == 0))
+        var canCreate = allowed.Count > 0 || _importEnemyHitMemos;
+        using (ImRaii.Disabled(_busy || !canCreate))
         {
             if (MirageUi.PrimaryButton(I18n.Get("fflogs.button.create_timeline"), id: "fflogsCreate"))
                 _ = CreateTimelineAsync(fight, player);
         }
 
-        if (!_busy && allowed.Count == 0)
+        if (!_busy && !canCreate)
         {
             MirageUi.Text(
                 I18n.Get("fflogs.empty.no_import_actions"),
@@ -377,7 +387,7 @@ internal sealed class FFLogsImportPanel : IDisposable
 
         var classJobId = ResolveClassJobId(player);
         var allowed = C.GetFFLogsImportActionIds(classJobId);
-        if (allowed.Count == 0)
+        if (allowed.Count == 0 && !_importEnemyHitMemos)
         {
             _status = I18n.Get("fflogs.status.select_actions");
             return;
@@ -401,20 +411,42 @@ internal sealed class FFLogsImportPanel : IDisposable
         _cts?.Cancel();
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
+        var importMemos = _importEnemyHitMemos;
 
         try
         {
-            var casts = await _client.GetCastsAsync(
-                code,
-                fight.Id,
-                player.Id,
-                fight.StartTime,
-                fight.EndTime,
-                C.FFLogsClientId,
-                C.FFLogsClientSecret,
-                ct).ConfigureAwait(false);
+            var casts = allowed.Count == 0
+                ? (IReadOnlyList<FFLogsCastEvent>)[]
+                : await _client.GetCastsAsync(
+                    code,
+                    fight.Id,
+                    player.Id,
+                    fight.StartTime,
+                    fight.EndTime,
+                    C.FFLogsClientId,
+                    C.FFLogsClientSecret,
+                    ct).ConfigureAwait(false);
 
-            PostToUi(() => FinishCreateFromCasts(casts, fight, player, options, allowed, code));
+            var hits = importMemos
+                ? await _client.GetDamageTakenAsync(
+                    code,
+                    fight.Id,
+                    fight.StartTime,
+                    fight.EndTime,
+                    C.FFLogsClientId,
+                    C.FFLogsClientSecret,
+                    ct).ConfigureAwait(false)
+                : [];
+
+            PostToUi(() => FinishCreate(
+                casts,
+                hits,
+                importMemos,
+                fight,
+                player,
+                options,
+                allowed,
+                code));
         }
         catch (OperationCanceledException)
         {
@@ -435,8 +467,10 @@ internal sealed class FFLogsImportPanel : IDisposable
         }
     }
 
-    private void FinishCreateFromCasts(
+    private void FinishCreate(
         IReadOnlyList<FFLogsCastEvent> casts,
+        IReadOnlyList<FFLogsDamageHit> hits,
+        bool importMemos,
         FFLogsFightInfo fight,
         FFLogsActorInfo player,
         FFLogsImportOptions options,
@@ -448,15 +482,28 @@ internal sealed class FFLogsImportPanel : IDisposable
             var players = _meta == null
                 ? []
                 : FFLogsImportService.PlayersForFight(_meta, fight);
-            var allCues = FFLogsImportService.BuildAllCues(fight, casts, players, player.Id);
-            var cues = allCues
+            var allCues = allowed.Count == 0
+                ? []
+                : FFLogsImportService.BuildAllCues(fight, casts, players, player.Id);
+            var actionCues = allCues
                 .Where(cue => allowed.Contains(cue.ActionId))
+                .ToList();
+            var memos = importMemos
+                ? FFLogsBossMemoImport.BuildMemos(fight, hits)
+                : [];
+            var cues = actionCues
+                .Concat(memos)
+                .OrderBy(c => c.TimeOffsetSec)
+                .ThenBy(c => c.Kind)
                 .ToList();
             if (cues.Count == 0)
             {
-                _status = allCues.Count == 0
-                    ? I18n.Get("fflogs.status.no_casts")
-                    : I18n.Format("fflogs.status.no_match", allCues.Count);
+                if (allCues.Count > 0)
+                    _status = I18n.Format("fflogs.status.no_match", allCues.Count);
+                else if (importMemos)
+                    _status = I18n.Get("fflogs.status.no_enemy_hits");
+                else
+                    _status = I18n.Get("fflogs.status.no_casts");
                 return;
             }
 
@@ -473,7 +520,13 @@ internal sealed class FFLogsImportPanel : IDisposable
             }
 
             _onImported(document);
-            _status = I18n.Format("fflogs.status.created", document.Name, cues.Count, allCues.Count);
+            _status = memos.Count == 0
+                ? I18n.Format("fflogs.status.created", document.Name, actionCues.Count, allCues.Count)
+                : I18n.Format(
+                    "fflogs.status.created_with_memos",
+                    document.Name,
+                    actionCues.Count,
+                    memos.Count);
             PluginServices.ChatGui.Print(
                 I18n.Format("fflogs.chat.imported", document.Name));
         }

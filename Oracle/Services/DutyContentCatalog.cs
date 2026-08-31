@@ -273,16 +273,6 @@ internal static class DutyContentCatalog
             : FormatFieldOption(territoryTypeId, field);
     }
 
-    public static string ResolveContentName(uint territoryTypeId, uint contentFinderConditionId, byte classJobLevel)
-    {
-        if (TryResolveDuty(territoryTypeId, contentFinderConditionId, classJobLevel, out var duty))
-            return duty.Name;
-
-        return territoryTypeId == 0
-            ? string.Empty
-            : ResolveTerritoryNameById(territoryTypeId);
-    }
-
     private static bool TryResolveDuty(
         uint territoryTypeId,
         uint contentFinderConditionId,

@@ -7,47 +7,12 @@ using System.Text.Json.Serialization;
 
 namespace Oracle.Services.FFLogs;
 
-internal sealed class FFLogsFightInfo
-{
-    public int Id { get; init; }
-    public string Name { get; init; } = string.Empty;
-    public double StartTime { get; init; }
-    public double EndTime { get; init; }
-    public bool Kill { get; init; }
-    public IReadOnlyList<int> FriendlyPlayers { get; init; } = [];
-
-    /// <summary>FFLogs <c>gameZone.id</c> (FFXIV TerritoryType id when present).</summary>
-    public int GameZoneId { get; init; }
-
-    public string GameZoneName { get; init; } = string.Empty;
-}
-
-internal sealed class FFLogsActorInfo
-{
-    public int Id { get; init; }
-    public string Name { get; init; } = string.Empty;
-    public string SubType { get; init; } = string.Empty;
-    public string Server { get; init; } = string.Empty;
-}
-
-internal sealed class FFLogsCastEvent
-{
-    public double Timestamp { get; init; }
-    public uint AbilityGameId { get; init; }
-    public int TargetId { get; init; }
-}
-
-internal sealed class FFLogsReportMeta
-{
-    public string Title { get; init; } = string.Empty;
-    public IReadOnlyList<FFLogsFightInfo> Fights { get; init; } = [];
-    public IReadOnlyList<FFLogsActorInfo> Players { get; init; } = [];
-}
-
 internal sealed class FFLogsClient : IDisposable
 {
     private const string TokenUrl = "https://www.fflogs.com/oauth/token";
-    private const string GraphqlUrl = "https://www.fflogs.com/api/v2/client";
+    private const string GraphqlUrlEn = "https://www.fflogs.com/api/v2/client";
+    private const string GraphqlUrlJa = "https://ja.fflogs.com/api/v2/client";
+    private const int MaxEventPages = 50;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -87,7 +52,7 @@ internal sealed class FFLogsClient : IDisposable
                       name
                     }
                   }
-                  masterData {
+                  masterData(translate: true) {
                     actors(type: "Player") {
                       id
                       name
@@ -100,11 +65,7 @@ internal sealed class FFLogsClient : IDisposable
             }
             """;
 
-        var root = await PostGraphqlAsync(
-            query,
-            new { code },
-            ct).ConfigureAwait(false);
-
+        var root = await PostGraphqlAsync(query, new { code }, ct).ConfigureAwait(false);
         var report = root?["data"]?["reportData"]?["report"] as JsonObject
             ?? throw new InvalidOperationException(I18n.Get("fflogs.err.report_not_found"));
 
@@ -199,75 +160,231 @@ internal sealed class FFLogsClient : IDisposable
             """;
 
         var all = new List<FFLogsCastEvent>();
-        double? pageStart = fightStartTime;
-        const int maxPages = 50;
+        await FetchEventPagesAsync(
+            query,
+            start => new
+            {
+                code,
+                fightIDs = new[] { fightId },
+                sourceID = sourceId,
+                startTime = start,
+                endTime = fightEndTime,
+            },
+            "fflogs.err.casts_failed",
+            data =>
+            {
+                foreach (var cast in ParseCastEvents(data))
+                    all.Add(cast);
+            },
+            fightStartTime,
+            ct).ConfigureAwait(false);
+        return all;
+    }
 
-        for (var page = 0; page < maxPages; page++)
+    public async Task<IReadOnlyList<FFLogsDamageHit>> GetDamageTakenAsync(
+        string code,
+        int fightId,
+        double fightStartTime,
+        double fightEndTime,
+        string clientId,
+        string clientSecret,
+        CancellationToken ct = default)
+    {
+        await EnsureTokenAsync(clientId, clientSecret, ct).ConfigureAwait(false);
+
+        const string query = """
+            query(
+              $code: String!
+              $fightIDs: [Int]!
+              $startTime: Float
+              $endTime: Float
+            ) {
+              reportData {
+                report(code: $code) {
+                  events(
+                    dataType: DamageTaken
+                    fightIDs: $fightIDs
+                    hostilityType: Friendlies
+                    startTime: $startTime
+                    endTime: $endTime
+                    limit: 10000
+                  ) {
+                    nextPageTimestamp
+                    data
+                  }
+                }
+              }
+            }
+            """;
+
+        var hits = new List<FFLogsDamageHit>();
+        await FetchEventPagesAsync(
+            query,
+            start => new
+            {
+                code,
+                fightIDs = new[] { fightId },
+                startTime = start,
+                endTime = fightEndTime,
+            },
+            "fflogs.err.damage_taken_failed",
+            data =>
+            {
+                foreach (var hit in ParseDamageHits(data))
+                    hits.Add(hit);
+            },
+            fightStartTime,
+            ct).ConfigureAwait(false);
+
+        Dictionary<uint, string> abilityNames;
+        try
         {
-            var root = await PostGraphqlAsync(
-                query,
-                new
-                {
-                    code,
-                    fightIDs = new[] { fightId },
-                    sourceID = sourceId,
-                    startTime = pageStart,
-                    endTime = fightEndTime,
-                },
-                ct).ConfigureAwait(false);
-
-            var eventsNode = root?["data"]?["reportData"]?["report"]?["events"] as JsonObject
-                ?? throw new InvalidOperationException(I18n.Get("fflogs.err.casts_failed"));
-
-            var dataNode = eventsNode["data"];
-            foreach (var cast in ParseCastEvents(dataNode))
-                all.Add(cast);
-
-            var next = eventsNode["nextPageTimestamp"];
-            if (next == null || next.GetValueKind() == JsonValueKind.Null)
-                break;
-
-            pageStart = next.GetValue<double>();
+            abilityNames = await FetchReportAbilityNamesAsync(code, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            PluginServices.Log.Warning(ex, "FFLogs ability names failed");
+            abilityNames = [];
         }
 
-        return all;
+        OverlayAbilityNames(hits, abilityNames);
+        return hits;
+    }
+
+    private async Task FetchEventPagesAsync(
+        string query,
+        Func<double?, object> variables,
+        string errorKey,
+        Action<JsonNode?> consume,
+        double startTime,
+        CancellationToken ct)
+    {
+        double? pageStart = startTime;
+        for (var page = 0; page < MaxEventPages; page++)
+        {
+            var root = await PostGraphqlAsync(query, variables(pageStart), ct).ConfigureAwait(false);
+            var eventsNode = root?["data"]?["reportData"]?["report"]?["events"] as JsonObject
+                ?? throw new InvalidOperationException(I18n.Get(errorKey));
+            consume(eventsNode["data"]);
+            if (!TryReadNextPage(eventsNode["nextPageTimestamp"], out pageStart))
+                break;
+        }
+    }
+
+    private async Task<Dictionary<uint, string>> FetchReportAbilityNamesAsync(
+        string code,
+        CancellationToken ct)
+    {
+        const string query = """
+            query($code: String!) {
+              reportData {
+                report(code: $code) {
+                  masterData(translate: true) {
+                    abilities {
+                      gameID
+                      name
+                    }
+                  }
+                }
+              }
+            }
+            """;
+
+        var names = new Dictionary<uint, string>();
+        var root = await PostGraphqlAsync(query, new { code }, ct).ConfigureAwait(false);
+        if (root?["data"]?["reportData"]?["report"]?["masterData"]?["abilities"] is not JsonArray abilities)
+            return names;
+
+        foreach (var node in abilities.OfType<JsonObject>())
+        {
+            var gameId = ReadUInt(node, "gameID", "gameId");
+            if (gameId == 0)
+                continue;
+
+            var name = node["name"]?.GetValue<string>()?.Trim() ?? string.Empty;
+            if (FFLogsDamageHit.IsUnusableName(name))
+                continue;
+
+            names[gameId] = name;
+        }
+
+        return names;
     }
 
     private static IEnumerable<FFLogsCastEvent> ParseCastEvents(JsonNode? dataNode)
     {
-        JsonArray? array = null;
-        if (dataNode is JsonArray direct)
-            array = direct;
-        else if (dataNode is JsonValue value && value.TryGetValue<string>(out var jsonText)
-                 && !string.IsNullOrWhiteSpace(jsonText))
-        {
-            array = JsonNode.Parse(jsonText) as JsonArray;
-        }
-
+        var array = ReadEventArray(dataNode);
         if (array == null)
             yield break;
 
         foreach (var node in array.OfType<JsonObject>())
         {
             var type = node["type"]?.GetValue<string>() ?? string.Empty;
-            // Prefer completed casts; skip begincast / other noise when present.
             if (!string.IsNullOrEmpty(type)
                 && !string.Equals(type, "cast", StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            var ability = node["abilityGameID"]?.GetValue<uint>()
-                ?? node["abilityGameId"]?.GetValue<uint>()
-                ?? 0u;
+            var ability = ReadUInt(node, "abilityGameID", "abilityGameId");
             if (ability == 0)
                 continue;
 
-            var ts = node["timestamp"]?.GetValue<double>() ?? 0;
             yield return new FFLogsCastEvent
             {
-                Timestamp = ts,
+                Timestamp = node["timestamp"]?.GetValue<double>() ?? 0,
                 AbilityGameId = ability,
                 TargetId = ReadTargetId(node),
             };
+        }
+    }
+
+    private static IEnumerable<FFLogsDamageHit> ParseDamageHits(JsonNode? dataNode)
+    {
+        var array = ReadEventArray(dataNode);
+        if (array == null)
+            yield break;
+
+        foreach (var node in array.OfType<JsonObject>())
+        {
+            var ability = ReadUInt(node, "abilityGameID", "abilityGameId");
+            if (ability == 0)
+                continue;
+
+            yield return new FFLogsDamageHit
+            {
+                Timestamp = node["timestamp"]?.GetValue<double>() ?? 0,
+                AbilityGameId = ability,
+                AbilityName = ReadAbilityName(node),
+                Type = node["type"]?.GetValue<string>() ?? string.Empty,
+                Tick = ReadBool(node, "tick") ?? false,
+                SourceIsFriendly = ReadBool(node, "sourceIsFriendly"),
+                TargetIsFriendly = ReadBool(node, "targetIsFriendly"),
+            };
+        }
+    }
+
+    private static string ReadAbilityName(JsonObject node)
+    {
+        var nested = node["ability"]?["name"]?.GetValue<string>();
+        if (!string.IsNullOrWhiteSpace(nested))
+            return nested.Trim();
+
+        var flat = node["abilityName"]?.GetValue<string>();
+        return string.IsNullOrWhiteSpace(flat) ? string.Empty : flat.Trim();
+    }
+
+    private static void OverlayAbilityNames(
+        List<FFLogsDamageHit> hits,
+        IReadOnlyDictionary<uint, string> abilityNames)
+    {
+        if (abilityNames.Count == 0)
+            return;
+
+        for (var i = 0; i < hits.Count; i++)
+        {
+            var hit = hits[i];
+            if (abilityNames.TryGetValue(hit.AbilityGameId, out var mapped)
+                && !FFLogsDamageHit.IsUnusableName(mapped))
+                hits[i] = hit with { AbilityName = mapped };
         }
     }
 
@@ -288,6 +405,26 @@ internal sealed class FFLogsClient : IDisposable
         catch (FormatException)
         {
             return 0;
+        }
+    }
+
+    private static bool? ReadBool(JsonObject node, string name)
+    {
+        var raw = node[name];
+        if (raw == null || raw.GetValueKind() == JsonValueKind.Null)
+            return null;
+
+        try
+        {
+            return raw.GetValue<bool>();
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+        catch (FormatException)
+        {
+            return null;
         }
     }
 
@@ -327,13 +464,16 @@ internal sealed class FFLogsClient : IDisposable
         _tokenExpiresUtc = DateTime.UtcNow.AddSeconds(token.ExpiresIn > 0 ? token.ExpiresIn : 3600);
     }
 
-    private async Task<JsonNode?> PostGraphqlAsync(string query, object variables, CancellationToken ct)
+    private async Task<JsonNode?> PostGraphqlAsync(
+        string query,
+        object variables,
+        CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(_accessToken))
             throw new InvalidOperationException(I18n.Get("fflogs.err.token_missing"));
 
         var payload = JsonSerializer.Serialize(new { query, variables });
-        using var request = new HttpRequestMessage(HttpMethod.Post, GraphqlUrl);
+        using var request = new HttpRequestMessage(HttpMethod.Post, ResolveGraphqlUrl());
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
         request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
 
@@ -351,6 +491,36 @@ internal sealed class FFLogsClient : IDisposable
         }
 
         return root;
+    }
+
+    private static string ResolveGraphqlUrl() =>
+        string.Equals(I18n.CurrentLang, "ja", StringComparison.OrdinalIgnoreCase)
+            ? GraphqlUrlJa
+            : GraphqlUrlEn;
+
+    private static bool TryReadNextPage(JsonNode? next, out double? pageStart)
+    {
+        pageStart = null;
+        if (next == null || next.GetValueKind() == JsonValueKind.Null)
+            return false;
+
+        pageStart = next.GetValue<double>();
+        return true;
+    }
+
+    private static uint ReadUInt(JsonObject node, string name, string alt) =>
+        node[name]?.GetValue<uint>() ?? node[alt]?.GetValue<uint>() ?? 0u;
+
+    private static JsonArray? ReadEventArray(JsonNode? dataNode)
+    {
+        if (dataNode is JsonArray direct)
+            return direct;
+        if (dataNode is JsonValue value
+            && value.TryGetValue<string>(out var jsonText)
+            && !string.IsNullOrWhiteSpace(jsonText))
+            return JsonNode.Parse(jsonText) as JsonArray;
+
+        return null;
     }
 
     private static string TrimError(string body)

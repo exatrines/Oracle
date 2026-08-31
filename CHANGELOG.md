@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-08-31
+
+### Added
+
+- FFLogs import: optional **Import enemy attacks as memos** (off by default). Party damage taken from enemies is clustered per ability (1s gap); auto-attacks and ticks are skipped. Independent of player-cast import
+- Memo names come from FFLogs in the plugin UI language (English or Japanese). Pasted report URLs may use any host (`www`, `ja`, `cn`, …)
+
 ## [1.0.5] - 2026-08-31
 
 ### Fixed
@@ -92,7 +99,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Renamed the plugin from ForeCast to **Oracle** (commands: `/oracle`, `/or`)
 
-[Unreleased]: https://github.com/exatrines/Oracle/compare/v1.0.5...HEAD
+[Unreleased]: https://github.com/exatrines/Oracle/compare/v1.0.6...HEAD
+[1.0.6]: https://github.com/exatrines/Oracle/releases/tag/v1.0.6
 [1.0.5]: https://github.com/exatrines/Oracle/releases/tag/v1.0.5
 [1.0.4]: https://github.com/exatrines/Oracle/releases/tag/v1.0.4
 [1.0.3]: https://github.com/exatrines/Oracle/releases/tag/v1.0.3

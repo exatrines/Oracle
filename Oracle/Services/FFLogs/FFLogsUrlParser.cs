@@ -7,6 +7,7 @@ internal readonly record struct FFLogsUrlParts(
     int? FightId,
     int? SourceId);
 
+/// <summary>Reads report code from any fflogs.com host or a bare code. Host is ignored.</summary>
 internal static partial class FFLogsUrlParser
 {
     [GeneratedRegex(

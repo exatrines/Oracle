@@ -26,11 +26,9 @@ internal static class FFLogsImportService
         var cues = new List<TimelineCue>(casts.Count);
         foreach (var cast in casts.OrderBy(c => c.Timestamp))
         {
-            var offsetSec = (float)((cast.Timestamp - fight.StartTime) / 1000.0);
-            offsetSec = MathF.Round(offsetSec);
             cues.Add(new TimelineCue
             {
-                TimeOffsetSec = offsetSec,
+                TimeOffsetSec = fight.OffsetSec(cast.Timestamp),
                 Kind = TimelineCueKind.Action,
                 ActionId = cast.AbilityGameId,
             });

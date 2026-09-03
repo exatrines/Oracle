@@ -6,7 +6,7 @@ internal static class JobCombo
 {
     /// <summary>
     /// Job dropdown: <c>{id} | {abbr} - {name}</c>. Returns true when selection changes.
-    /// Job is required  Eempty selection shows <c>(not set)</c>.
+    /// Job is required; empty selection shows <c>(not set)</c>.
     /// </summary>
     public static bool Draw(
         string label,

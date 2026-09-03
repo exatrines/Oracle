@@ -23,6 +23,9 @@ internal sealed class AutoRecordImportPanel
     private int _sceneId;
     private bool _sceneFilterEnabled;
     private bool _autoLoadEnabled = true;
+    private bool _importEnemyHitMemos;
+    private bool _importSync;
+    private uint _syncOptionTerritoryId;
     private string _zoneSearchFilter = string.Empty;
     private string _zoneLabel = string.Empty;
 
@@ -57,6 +60,7 @@ internal sealed class AutoRecordImportPanel
             MirageUi.Color.Secondary);
 
         DrawTimelineMeta();
+        DrawImportOptions();
         DrawAutoLoadSection();
         DrawCreateButton();
     }
@@ -101,81 +105,52 @@ internal sealed class AutoRecordImportPanel
 
     private void DrawTimelineMeta()
     {
-        MirageUi.SubHeader(I18n.Get("fflogs.subheader.timeline"));
-        MirageUi.InputText(I18n.Get("fflogs.label.name"), ref _title, 80, id: "autoRecordTitle");
-        DrawZoneField(editable: true, id: "autoRecordZoneGroup");
+        ImportTimelineUi.DrawName(ref _title, "autoRecordTitle");
+        ImportTimelineUi.DrawZoneField(
+            editable: true,
+            id: "autoRecordZoneGroup",
+            ref _territoryTypeId,
+            ref _contentFinderConditionId,
+            ref _zoneClassJobLevel,
+            ref _zoneLabel,
+            ref _zoneSearchFilter);
     }
 
-    private void DrawAutoLoadSection()
-    {
-        MirageUi.SubHeader(I18n.Get("config.subheader.auto_load"));
-        var autoLoad = _autoLoadEnabled;
-        if (MirageUi.Checkbox(I18n.Get("config.checkbox.enable_auto_load"), ref autoLoad))
-            _autoLoadEnabled = autoLoad;
+    private void DrawImportOptions() =>
+        ImportTimelineUi.DrawImportOptions(
+            ref _importEnemyHitMemos,
+            ref _importSync,
+            ref _syncOptionTerritoryId,
+            _territoryTypeId);
 
-        DrawZoneField(editable: false, id: "autoRecordZoneReadonly");
-        DrawJobField();
-        DrawSceneField();
-    }
-
-    private void DrawZoneField(bool editable, string id)
-    {
-        if (!editable)
-        {
-            ZoneCombo.DrawReadonly(
-                I18n.Get("config.label.zone"),
-                _territoryTypeId,
-                _contentFinderConditionId,
-                _zoneClassJobLevel,
-                id: id);
-            return;
-        }
-
-        ZoneCombo.Draw(
-            I18n.Get("config.label.zone_group"),
+    private void DrawAutoLoadSection() =>
+        ImportTimelineUi.DrawAutoLoad(
+            "autoRecord",
+            ref _autoLoadEnabled,
             ref _territoryTypeId,
             ref _contentFinderConditionId,
             ref _zoneClassJobLevel,
             ref _zoneLabel,
             ref _zoneSearchFilter,
-            id: id);
-    }
-
-    private void DrawJobField()
-    {
-        var jobId = _classJobId;
-        if (!JobCombo.Draw(I18n.Get("config.label.job"), ref jobId, id: "autoRecordJob"))
-            return;
-
-        _classJobId = jobId;
-    }
-
-    private void DrawSceneField()
-    {
-        var sceneId = _sceneId;
-        var filter = _sceneFilterEnabled;
-        if (SceneFilterField.DrawLabeled(
-                I18n.Get("config.label.scene_id"),
-                "autoRecordScene",
-                ref filter,
-                ref sceneId))
-        {
-            _sceneFilterEnabled = filter;
-            _sceneId = Math.Max(0, sceneId);
-        }
-    }
+            ref _classJobId,
+            ref _sceneId,
+            ref _sceneFilterEnabled);
 
     private void DrawCreateButton()
     {
         MirageUi.PaddedSeparator();
-        var allowed = C.GetFFLogsImportActionIds(_classJobId);
-        using (ImRaii.Disabled(_loaded == null || allowed.Count == 0))
+        var canCreate = ImportTimelineUi.CanCreate(
+            _classJobId,
+            _territoryTypeId,
+            _importEnemyHitMemos,
+            _importSync);
+        using (ImRaii.Disabled(_loaded == null || !canCreate))
         {
             if (MirageUi.PrimaryButton(I18n.Get("fflogs.button.create_timeline"), id: "autoRecordCreate"))
                 CreateTimeline();
         }
 
-        if (_loaded != null && allowed.Count == 0)
+        if (_loaded != null && !canCreate)
         {
             MirageUi.Text(
                 I18n.Get("fflogs.empty.no_import_actions"),
@@ -226,30 +201,61 @@ internal sealed class AutoRecordImportPanel
             return;
 
         var allowed = C.GetFFLogsImportActionIds(_classJobId);
-        if (allowed.Count == 0)
+        var syncSpecs = _importSync
+            ? EnemySyncPresets.SpecsFor(_territoryTypeId)
+            : [];
+        if (allowed.Count == 0
+            && !_importEnemyHitMemos
+            && syncSpecs.Count == 0)
         {
             _status = I18n.Get("fflogs.status.select_actions");
             return;
         }
 
-        var cues = _loaded.Cues
-            .Where(c => c.Kind == TimelineCueKind.Action && allowed.Contains(c.ActionId))
-            .Select(c =>
-            {
-                var copy = new TimelineCue
+        var actionCues = allowed.Count == 0
+            ? new List<TimelineCue>()
+            : _loaded.Cues
+                .Where(c => c.Kind == TimelineCueKind.Action && allowed.Contains(c.ActionId))
+                .Select(c =>
+                {
+                    var copy = new TimelineCue
+                    {
+                        TimeOffsetSec = c.TimeOffsetSec,
+                        Kind = TimelineCueKind.Action,
+                        ActionId = c.ActionId,
+                    };
+                    CueTargetCatalog.Copy(c, copy);
+                    return copy;
+                })
+                .ToList();
+        var memos = _importEnemyHitMemos
+            ? _loaded.Cues
+                .Where(c => c.Kind == TimelineCueKind.Memo)
+                .Select(c => new TimelineCue
                 {
                     TimeOffsetSec = c.TimeOffsetSec,
-                    Kind = TimelineCueKind.Action,
+                    Kind = TimelineCueKind.Memo,
                     ActionId = c.ActionId,
-                };
-                CueTargetCatalog.Copy(c, copy);
-                return copy;
-            })
+                    Label = c.Label,
+                })
+                .ToList()
+            : new List<TimelineCue>();
+        var syncCues = EnemySyncPresets.TakeFirstCues(_loaded.Cues, syncSpecs);
+        var cues = actionCues
+            .Concat(memos)
+            .Concat(syncCues)
+            .OrderBy(c => c.TimeOffsetSec)
+            .ThenBy(c => c.Kind)
             .ToList();
 
         if (cues.Count == 0)
         {
-            _status = I18n.Format("fflogs.status.no_match", _loaded.Cues.Count);
+            if (_importSync)
+                _status = I18n.Get("fflogs.status.no_enemy_sync");
+            else if (_importEnemyHitMemos)
+                _status = I18n.Get("fflogs.status.no_enemy_hits");
+            else
+                _status = I18n.Format("fflogs.status.no_match", _loaded.Cues.Count);
             return;
         }
 
@@ -272,8 +278,26 @@ internal sealed class AutoRecordImportPanel
             Cues = cues,
         };
 
-        _status = I18n.Format("autorecord.status.created", document.Name, cues.Count, _loaded.Cues.Count);
+        _status = FormatCreatedStatus(
+            document.Name,
+            actionCues.Count,
+            memos.Count,
+            syncCues.Count,
+            _loaded.Cues.Count);
         PluginServices.ChatGui.Print(I18n.Format("autorecord.chat.imported", document.Name));
         _onImported(document);
+    }
+
+    private static string FormatCreatedStatus(
+        string name,
+        int actionCount,
+        int memoCount,
+        int syncCount,
+        int recordedCount)
+    {
+        var status = memoCount > 0
+            ? I18n.Format("fflogs.status.created_with_memos", name, actionCount, memoCount)
+            : I18n.Format("autorecord.status.created", name, actionCount, recordedCount);
+        return ImportTimelineUi.WithSyncCount(status, syncCount);
     }
 }

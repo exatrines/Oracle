@@ -107,6 +107,8 @@ internal sealed class MajorOverlayWindow : Window
         return _engine.GetUpcoming(futureSeconds + 0.5f)
             .Where(u =>
             {
+                if (!OverlayView.IsAction(u.Cue))
+                    return false;
                 var axisSec = u.RemainingSeconds;
                 return axisSec >= -pastSeconds - 0.05f && axisSec <= futureSeconds + 0.05f;
             })
@@ -170,7 +172,7 @@ internal sealed class MajorOverlayWindow : Window
         if (!C.MajorShowTitle)
             return;
 
-        var headerText = BuildHeaderText();
+        var headerText = OverlayView.HeaderText(_engine);
         if (string.IsNullOrEmpty(headerText))
             return;
 
@@ -241,7 +243,7 @@ internal sealed class MajorOverlayWindow : Window
         float iconSize,
         int laneCount)
     {
-        var blinkPhaseOn = (DateTime.UtcNow.Millisecond / 250) % 2 == 0;
+        var blinkPhaseOn = OverlayView.BlinkPhaseOn;
         var twoLane = laneCount >= 2;
 
         // Ascending RemainingSeconds: later cues paint on top when X overlaps.
@@ -279,62 +281,44 @@ internal sealed class MajorOverlayWindow : Window
                     Math.Max(1.5f, iconSize * 0.14f));
             }
 
-            var highlighting = item.IsHighlighting;
-            var isPost = item.IsPostHighlight;
-            var lineColorVec = isPost ? C.ActionHighlightAfterLineColor : C.ActionHighlightBeforeLineColor;
-            var lineThickness = Math.Max(
-                1f,
-                isPost ? C.ActionHighlightAfterLineThickness : C.ActionHighlightBeforeLineThickness);
-            var blink = isPost ? C.ActionHighlightAfterBlink : C.ActionHighlightBeforeBlink;
-            var showLine = highlighting && (!blink || blinkPhaseOn);
-            var targetRole = item.Cue.Kind == TimelineCueKind.Action
-                ? CueTargetCatalog.GetRole(item.Cue)
-                : CueTargetRole.None;
+            var showLine = OverlayView.TryHighlightLine(
+                item,
+                blinkPhaseOn,
+                out var lineColorVec,
+                out var lineThickness);
+            var targetRole = CueTargetCatalog.GetRole(item.Cue);
 
-            if (item.Cue.Kind == TimelineCueKind.Action)
-            {
-                var icon = ActionLookup.GetIconWrap(item.Cue.ActionId);
-                if (icon != null)
-                    drawList.AddImage(icon.Handle, iconMin, iconMax);
-                else
-                    drawList.AddRectFilled(iconMin, iconMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.2f, 0.2f, 0.9f)), 3f);
-
-                if (targetRole != CueTargetRole.None)
-                {
-                    var roleColor = ImGui.ColorConvertFloat4ToU32(CueTargetCatalog.GetRoleColor(targetRole));
-                    drawList.AddRect(
-                        iconMin,
-                        iconMax,
-                        roleColor,
-                        3f,
-                        ImDrawFlags.None,
-                        Math.Max(2f, iconSize * 0.08f));
-
-                    var targetIcon = CueTargetCatalog.GetIconWrap(item.Cue);
-                    if (targetIcon != null)
-                    {
-                        var badge = Math.Max(12f, iconSize * 0.58f);
-                        var badgeMin = new Vector2(iconMax.X - badge, iconMax.Y - badge);
-                        drawList.AddImage(targetIcon.Handle, badgeMin, iconMax);
-                        drawList.AddRect(
-                            badgeMin,
-                            iconMax,
-                            ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, 0.85f)),
-                            2f,
-                            ImDrawFlags.None,
-                            1.5f);
-                    }
-                }
-            }
+            var icon = ActionLookup.GetIconWrap(item.Cue.ActionId);
+            if (icon != null)
+                drawList.AddImage(icon.Handle, iconMin, iconMax);
             else
+                drawList.AddRectFilled(iconMin, iconMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.2f, 0.2f, 0.9f)), 3f);
+
+            if (targetRole != CueTargetRole.None)
             {
-                drawList.AddRectFilled(iconMin, iconMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0.15f, 0.25f, 0.4f, 0.95f)), 3f);
-                var memo = ActionLookup.GetMajorAbbrev(item.Cue);
-                var memoSize = ImGui.CalcTextSize(memo);
-                drawList.AddText(
-                    iconMin + new Vector2((iconSize - memoSize.X) * 0.5f, (iconSize - memoSize.Y) * 0.5f),
-                    ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 1f)),
-                    memo);
+                var roleColor = ImGui.ColorConvertFloat4ToU32(CueTargetCatalog.GetRoleColor(targetRole));
+                drawList.AddRect(
+                    iconMin,
+                    iconMax,
+                    roleColor,
+                    3f,
+                    ImDrawFlags.None,
+                    Math.Max(2f, iconSize * 0.08f));
+
+                var targetIcon = CueTargetCatalog.GetIconWrap(item.Cue);
+                if (targetIcon != null)
+                {
+                    var badge = Math.Max(12f, iconSize * 0.58f);
+                    var badgeMin = new Vector2(iconMax.X - badge, iconMax.Y - badge);
+                    drawList.AddImage(targetIcon.Handle, badgeMin, iconMax);
+                    drawList.AddRect(
+                        badgeMin,
+                        iconMax,
+                        ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, 0.85f)),
+                        2f,
+                        ImDrawFlags.None,
+                        1.5f);
+                }
             }
 
             if (showLine)
@@ -373,17 +357,6 @@ internal sealed class MajorOverlayWindow : Window
             C.MajorOverlayClickThrough);
     }
 
-    private string BuildHeaderText()
-    {
-        var name = _engine.IsPreview
-            ? I18n.Get("overlay.preview")
-            : _engine.ActiveDocument?.Name ?? I18n.Get("overlay.fallback_timeline");
-        var clock = _engine.IsRunning
-            ? I18n.Format("overlay.seconds", _engine.ElapsedSeconds)
-            : I18n.Get("overlay.stopped");
-        return $"{name}  {clock}";
-    }
-
     private static float TitleBandHeight()
     {
         if (!C.MajorShowTitle)
@@ -404,7 +377,7 @@ internal sealed class MajorOverlayWindow : Window
             : iconSize;
 
     /// <summary>
-    /// Layout from Major Before (right / future) and After (left / past) ÁEpixels per second.
+    /// Layout from Major Before (right / future) and After (left / past), in pixels per second.
     /// </summary>
     private static void ResolveMajorAxis(
         out float pps,

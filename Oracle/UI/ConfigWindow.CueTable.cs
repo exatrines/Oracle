@@ -8,9 +8,8 @@ namespace Oracle.UI;
 
 internal sealed partial class ConfigWindow
 {
-    private void DrawCueTable(TimelineDocument doc, bool persist = true)
+    private void DrawCueTable(TimelineDocument doc)
     {
-        _cueTablePersist = persist;
         EnsureNewCueDraft(doc);
         PruneCueSelection(doc);
 
@@ -62,7 +61,7 @@ internal sealed partial class ConfigWindow
                     ImGui.EndTable();
 
                     if (dirty)
-                        PersistCueDocument(doc);
+                        PersistDocument(doc);
                 }
             }
         }
@@ -105,10 +104,14 @@ internal sealed partial class ConfigWindow
                 cue.Kind = next;
                 if (cue.Kind != TimelineCueKind.Memo)
                     cue.Label = string.Empty;
-                if (cue.Kind != TimelineCueKind.Action)
-                {
+                if (cue.Kind is not (TimelineCueKind.Action or TimelineCueKind.Sync))
                     cue.ActionId = 0;
+                if (cue.Kind != TimelineCueKind.Action)
                     CueTargetCatalog.Clear(cue);
+                if (cue.Kind != TimelineCueKind.Sync)
+                {
+                    cue.Effected = false;
+                    cue.SyncType = default;
                 }
 
                 dirty = true;
@@ -130,9 +133,9 @@ internal sealed partial class ConfigWindow
                 dirty = true;
             }
         }
-        else if (cue.Kind == TimelineCueKind.SceneTransition)
+        else if (cue.Kind == TimelineCueKind.Sync)
         {
-            if (DrawSceneTransitionFields(cue, "##rowScene"))
+            if (SyncCueFields.DrawRow(cue, "##rowCastSync"))
                 dirty = true;
         }
         else
@@ -159,7 +162,7 @@ internal sealed partial class ConfigWindow
 
     private void DrawCueTimeCell(TimelineCue cue, ref bool dirty)
     {
-        var savedTimeText = FormatCueTimeMmSs(cue.TimeOffsetSec);
+        var savedTimeText = CueTime.Format(cue.TimeOffsetSec);
         var editingThis = string.Equals(_cueTimeDraftId, cue.Id, StringComparison.Ordinal);
         var timeText = editingThis ? _cueTimeDraft : savedTimeText;
         var gap = ImGui.GetStyle().ItemSpacing.X;
@@ -171,7 +174,7 @@ internal sealed partial class ConfigWindow
         var timeChanged = MirageUi.InputText(
             string.Empty,
             ref timeText,
-            16,
+            12,
             id: "time",
             hint: I18n.Get("config.cue.hint.time"),
             width: inputWidth);
@@ -217,7 +220,7 @@ internal sealed partial class ConfigWindow
     }
 
     private static bool CanApplyCueTimeDraft(string draftText, string savedTimeText, out float parsedTime) =>
-        TryParseCueTimeMmSs(draftText, out parsedTime)
+        CueTime.TryParse(draftText, out parsedTime)
         && !string.Equals(draftText, savedTimeText, StringComparison.Ordinal);
 
     private void DrawCueRowContextMenu(TimelineDocument doc, TimelineCue cue, Vector2 rowMin, Vector2 rowMax)
@@ -261,13 +264,6 @@ internal sealed partial class ConfigWindow
             Kind = TimelineCueKind.Action,
         };
         doc.Cues.Insert(above ? index : index + 1, blank);
-        PersistCueDocument(doc);
-    }
-
-    private void PersistCueDocument(TimelineDocument doc)
-    {
-        if (!_cueTablePersist)
-            return;
         PersistDocument(doc);
     }
 
@@ -319,7 +315,7 @@ internal sealed partial class ConfigWindow
             Format = CueClipboardFormat,
             Cues = cues,
         };
-        ImGui.SetClipboardText(JsonSerializer.Serialize(payload, CueClipboardJsonOptions));
+        ImGui.SetClipboardText(JsonSerializer.Serialize(payload, TimelineJson.CompactOptions));
     }
 
     private void PasteClipboardCues(TimelineDocument doc)
@@ -330,7 +326,7 @@ internal sealed partial class ConfigWindow
         foreach (var cue in cues)
             doc.Cues.Add(CloneCueRow(cue));
 
-        PersistCueDocument(doc);
+        PersistDocument(doc);
     }
 
     private static bool TryReadCueClipboard(out List<TimelineCue> cues)
@@ -342,7 +338,7 @@ internal sealed partial class ConfigWindow
 
         try
         {
-            var payload = JsonSerializer.Deserialize<CueClipboardPayload>(text, CueClipboardJsonOptions);
+            var payload = TimelineJson.DeserializePayload<CueClipboardPayload>(text);
             if (payload?.Cues == null
                 || !string.Equals(payload.Format, CueClipboardFormat, StringComparison.Ordinal)
                 || payload.Cues.Count == 0)
@@ -366,7 +362,7 @@ internal sealed partial class ConfigWindow
         if (_cueTimeDraftId != null && _selectedCueIds.Contains(_cueTimeDraftId))
             _cueTimeDraftId = null;
         _selectedCueIds.Clear();
-        PersistCueDocument(doc);
+        PersistDocument(doc);
     }
 
     private void DeleteCueRow(TimelineDocument doc, string cueId)
@@ -375,7 +371,7 @@ internal sealed partial class ConfigWindow
         _selectedCueIds.Remove(cueId);
         if (string.Equals(_cueTimeDraftId, cueId, StringComparison.Ordinal))
             _cueTimeDraftId = null;
-        PersistCueDocument(doc);
+        PersistDocument(doc);
     }
 
     private void PruneCueSelection(TimelineDocument doc)
@@ -388,18 +384,7 @@ internal sealed partial class ConfigWindow
     }
 
     private static TimelineCue CloneCueRow(TimelineCue source) =>
-        new()
-        {
-            TimeOffsetSec = source.TimeOffsetSec,
-            Kind = source.Kind,
-            ActionId = source.ActionId,
-            Label = source.Kind == TimelineCueKind.Memo ? source.Label : string.Empty,
-            TargetKind = source.Kind == TimelineCueKind.Action ? source.TargetKind : CueTargetKind.None,
-            TargetJobId = source.Kind == TimelineCueKind.Action ? source.TargetJobId : 0,
-            TargetRole = source.Kind == TimelineCueKind.Action ? source.TargetRole : CueTargetRole.None,
-            SceneBefore = source.SceneBefore,
-            SceneAfter = source.SceneAfter,
-        };
+        source.CopyForDocument();
 
     private sealed class CueClipboardPayload
     {
@@ -627,7 +612,7 @@ internal sealed partial class ConfigWindow
 
     private static void SetupCueTableColumns()
     {
-        var timeCol = MirageUi.ResolveControlHeight() + 80f + ImGui.GetStyle().ItemSpacing.X;
+        var timeCol = MirageUi.ResolveControlHeight() + 116f + ImGui.GetStyle().ItemSpacing.X;
         ImGui.TableSetupColumn("", ImGuiTableColumnFlags.WidthFixed, MirageUi.ResolveControlHeight() + 4f);
         ImGui.TableSetupColumn(I18n.Get("config.cue.col.time"), ImGuiTableColumnFlags.WidthFixed, timeCol);
         ImGui.TableSetupColumn("", ImGuiTableColumnFlags.WidthFixed, 96f);
@@ -647,15 +632,15 @@ internal sealed partial class ConfigWindow
 
     private void ResetNewCueDraft()
     {
-        _newCueTimeText = "00:00";
+        _newCueTimeText = CueTime.Format(0f);
         _newCueKind = TimelineCueKind.Action;
         _newCueMemo = string.Empty;
         _newCueActionId = 0;
         _newCueTargetKind = CueTargetKind.None;
         _newCueTargetJobId = 0;
         _newCueTargetRole = CueTargetRole.None;
-        _newCueSceneBefore = 0;
-        _newCueSceneAfter = 0;
+        _newCueEffected = false;
+        _newCueSyncType = EnemySyncType.Cast;
     }
 
     /// <summary>Fixed input row under the cue table; up-arrow commits into the list.</summary>
@@ -682,7 +667,7 @@ internal sealed partial class ConfigWindow
         MirageUi.InputText(
             string.Empty,
             ref _newCueTimeText,
-            16,
+            12,
             id: "time",
             hint: I18n.Get("config.cue.hint.time"),
             width: MirageUi.InputWidthFill);
@@ -696,11 +681,22 @@ internal sealed partial class ConfigWindow
                 id: "kind",
                 allowClear: false,
                 width: MirageUi.InputWidthFill))
-            _newCueKind = ParseCueKindLabel(kindLabel);
+        {
+            var next = ParseCueKindLabel(kindLabel);
+            if (next != _newCueKind)
+            {
+                _newCueKind = next;
+                if (_newCueKind != TimelineCueKind.Sync)
+                {
+                    _newCueEffected = false;
+                    _newCueSyncType = EnemySyncType.Cast;
+                }
+            }
+        }
 
         ImGui.TableNextColumn();
         var isMemo = _newCueKind == TimelineCueKind.Memo;
-        var isScene = _newCueKind == TimelineCueKind.SceneTransition;
+        var isSync = _newCueKind == TimelineCueKind.Sync;
         if (isMemo)
         {
             MirageUi.InputText(
@@ -710,9 +706,13 @@ internal sealed partial class ConfigWindow
                 id: "memo",
                 width: MirageUi.InputWidthFill);
         }
-        else if (isScene)
+        else if (isSync)
         {
-            DrawSceneTransitionDraftFields();
+            SyncCueFields.DrawRow(
+                ref _newCueSyncType,
+                ref _newCueActionId,
+                ref _newCueEffected,
+                "draftCastSync");
         }
         else
         {
@@ -728,8 +728,8 @@ internal sealed partial class ConfigWindow
         }
 
         ImGui.TableNextColumn();
-        var canSubmit = TryParseCueTimeMmSs(_newCueTimeText, out _)
-                        && (isMemo || isScene || _newCueActionId != 0);
+        var canSubmit = CueTime.TryParse(_newCueTimeText, out _)
+                        && (isMemo || _newCueActionId != 0);
         if (MirageUi.IconButton(
                 FontAwesomeIcon.ArrowUpFromBracket,
                 "##submitCue",
@@ -745,20 +745,28 @@ internal sealed partial class ConfigWindow
 
     private void SubmitNewCueRow(TimelineDocument doc)
     {
-        if (!TryParseCueTimeMmSs(_newCueTimeText, out var time))
+        if (!CueTime.TryParse(_newCueTimeText, out var time))
             return;
 
         if (_newCueKind == TimelineCueKind.Action && _newCueActionId == 0)
+            return;
+        if (_newCueKind == TimelineCueKind.Sync && _newCueActionId == 0)
             return;
 
         var cue = new TimelineCue
         {
             TimeOffsetSec = time,
             Kind = _newCueKind,
-            ActionId = _newCueKind == TimelineCueKind.Action ? _newCueActionId : 0,
-            Label = _newCueKind == TimelineCueKind.Memo ? _newCueMemo : string.Empty,
-            SceneBefore = _newCueKind == TimelineCueKind.SceneTransition ? (uint)Math.Max(0, _newCueSceneBefore) : 0,
-            SceneAfter = _newCueKind == TimelineCueKind.SceneTransition ? (uint)Math.Max(0, _newCueSceneAfter) : 0,
+            ActionId = _newCueKind is TimelineCueKind.Action or TimelineCueKind.Sync
+                ? _newCueActionId
+                : 0,
+            Label = _newCueKind == TimelineCueKind.Memo
+                ? _newCueMemo
+                : string.Empty,
+            SyncType = _newCueKind == TimelineCueKind.Sync
+                ? _newCueSyncType
+                : default,
+            Effected = _newCueKind == TimelineCueKind.Sync && _newCueEffected,
         };
         if (_newCueKind == TimelineCueKind.Action)
         {
@@ -768,7 +776,7 @@ internal sealed partial class ConfigWindow
         }
 
         doc.Cues.Add(cue);
-        PersistCueDocument(doc);
+        PersistDocument(doc);
         ResetNewCueDraft();
         _newCueDraftDocId = doc.Id;
     }
@@ -777,14 +785,14 @@ internal sealed partial class ConfigWindow
     [
         I18n.Get("config.cue.kind.action"),
         I18n.Get("config.cue.kind.memo"),
-        I18n.Get("config.cue.kind.scene_transition"),
+        I18n.Get("config.cue.kind.sync"),
     ];
 
     private static string CueKindLabel(TimelineCueKind kind) =>
         kind switch
         {
             TimelineCueKind.Memo => I18n.Get("config.cue.kind.memo"),
-            TimelineCueKind.SceneTransition => I18n.Get("config.cue.kind.scene_transition"),
+            TimelineCueKind.Sync => I18n.Get("config.cue.kind.sync"),
             _ => I18n.Get("config.cue.kind.action"),
         };
 
@@ -792,83 +800,9 @@ internal sealed partial class ConfigWindow
     {
         if (string.Equals(label, I18n.Get("config.cue.kind.memo"), StringComparison.Ordinal))
             return TimelineCueKind.Memo;
-        if (string.Equals(label, I18n.Get("config.cue.kind.scene_transition"), StringComparison.Ordinal))
-            return TimelineCueKind.SceneTransition;
+        if (string.Equals(label, I18n.Get("config.cue.kind.sync"), StringComparison.Ordinal))
+            return TimelineCueKind.Sync;
         return TimelineCueKind.Action;
     }
 
-    private static bool DrawSceneTransitionFields(TimelineCue cue, string idPrefix)
-    {
-        var dirty = false;
-        var before = (int)cue.SceneBefore;
-        var after = (int)cue.SceneAfter;
-        var width = Math.Max(40f, (ImGui.GetContentRegionAvail().X - ImGui.CalcTextSize("→").X - ImGui.GetStyle().ItemSpacing.X * 2f) * 0.5f);
-
-        if (MirageUi.InputInt(string.Empty, ref before, step: 0, stepFast: 0, id: idPrefix + "Before", width: width))
-        {
-            cue.SceneBefore = (uint)Math.Max(0, before);
-            dirty = true;
-        }
-
-        ImGui.SameLine();
-        ImGui.TextUnformatted("→");
-        ImGui.SameLine();
-
-        if (MirageUi.InputInt(string.Empty, ref after, step: 0, stepFast: 0, id: idPrefix + "After", width: width))
-        {
-            cue.SceneAfter = (uint)Math.Max(0, after);
-            dirty = true;
-        }
-
-        return dirty;
-    }
-
-    private void DrawSceneTransitionDraftFields()
-    {
-        var width = Math.Max(40f, (ImGui.GetContentRegionAvail().X - ImGui.CalcTextSize("→").X - ImGui.GetStyle().ItemSpacing.X * 2f) * 0.5f);
-        MirageUi.InputInt(string.Empty, ref _newCueSceneBefore, step: 0, stepFast: 0, id: "draftSceneBefore", width: width);
-        _newCueSceneBefore = Math.Max(0, _newCueSceneBefore);
-        ImGui.SameLine();
-        ImGui.TextUnformatted("→");
-        ImGui.SameLine();
-        MirageUi.InputInt(string.Empty, ref _newCueSceneAfter, step: 0, stepFast: 0, id: "draftSceneAfter", width: width);
-        _newCueSceneAfter = Math.Max(0, _newCueSceneAfter);
-    }
-
-    /// <summary>Seconds ↁE<c>mm:ss</c> (negative times keep a leading minus). No milliseconds.</summary>
-    private static string FormatCueTimeMmSs(float seconds)
-    {
-        var negative = seconds < 0f;
-        var totalSec = (int)Math.Round(Math.Abs((double)seconds));
-        var minutes = totalSec / 60;
-        var secs = totalSec % 60;
-        var body = $"{minutes:00}:{secs:00}";
-        return negative ? "-" + body : body;
-    }
-
-    /// <summary>Parses <c>mm:ss</c> or <c>-mm:ss</c> into seconds.</summary>
-    private static bool TryParseCueTimeMmSs(string text, out float seconds)
-    {
-        seconds = 0f;
-        if (string.IsNullOrWhiteSpace(text))
-            return false;
-
-        text = text.Trim();
-        var negative = text.StartsWith('-');
-        if (negative)
-            text = text[1..].TrimStart();
-
-        var parts = text.Split(':');
-        if (parts.Length != 2)
-            return false;
-        if (!int.TryParse(parts[0], out var minutes) || minutes < 0)
-            return false;
-        if (!int.TryParse(parts[1], out var secs) || secs < 0 || secs > 59)
-            return false;
-
-        seconds = (minutes * 60) + secs;
-        if (negative)
-            seconds = -seconds;
-        return true;
-    }
 }

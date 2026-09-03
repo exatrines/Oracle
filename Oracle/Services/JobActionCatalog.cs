@@ -208,7 +208,8 @@ internal static class JobActionCatalog
 
         if (action.IsRoleAction)
         {
-            // Role: selected job must be flagged. Never use parent  E            // parent class often shares a different role (e.g. ACN caster vs SCH healer).
+            // Role: selected job must be flagged. Never use parent —
+            // parent class often shares a different role (e.g. ACN caster vs SCH healer).
             if (!CategoryFlagsAbbreviation(action, selection.Abbreviation))
                 return false;
 

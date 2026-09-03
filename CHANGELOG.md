@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-03
+
+### Added
+
+- **Sync** cues: resync the running clock to an enemy cast start or complete, or to a status apply or remove. Each cue uses one edge (start or complete / apply or remove)
+- **Content Sync Presets** (Settings → Import): built-in rows for Dragonsong's Reprise, The Omega Protocol, Futures Rewritten, and Dancing Mad. A stored override hides the built-in list until Reset to default
+- FFLogs and AutoRecord import: **Import sync** when the selected zone has presets (shown only then, on by default). Imports the first matching event per preset row
+- Cue table times as `mm:ss.mmm` (stored and synced at 0.1s)
+- **Plugin log** (settings): optional Dalamud log of countdown, combat, enemy casts, status, action effects, and scene changes
+- AutoRecord records enemy cast start, cast complete (ActionEffect, same filter as the live clock), and non-friendly status apply/remove, in addition to your actions
+
+### Changed
+
+- Timeline, Major, and hotbar overlays show **Action** cues only. Memos and sync stay in the editor
+- Import: enemy-attack memos stay a separate checkbox; cast and status sync are one **Import sync** control
+
+### Removed
+
+- Experimental **Scene Transition** cue type. Those rows (and retired BossHpZero) are dropped when a timeline file is loaded. Auto Load scene filter is unchanged
+
 ## [1.0.6] - 2026-08-31
 
 ### Added
@@ -99,7 +119,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Renamed the plugin from ForeCast to **Oracle** (commands: `/oracle`, `/or`)
 
-[Unreleased]: https://github.com/exatrines/Oracle/compare/v1.0.6...HEAD
+[Unreleased]: https://github.com/exatrines/Oracle/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/exatrines/Oracle/compare/v1.0.6...v1.1.0
 [1.0.6]: https://github.com/exatrines/Oracle/releases/tag/v1.0.6
 [1.0.5]: https://github.com/exatrines/Oracle/releases/tag/v1.0.5
 [1.0.4]: https://github.com/exatrines/Oracle/releases/tag/v1.0.4

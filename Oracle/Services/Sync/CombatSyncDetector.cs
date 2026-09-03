@@ -30,14 +30,6 @@ internal sealed class CombatSyncDetector
         _wasInCombat = inCombat;
     }
 
-    public void Reset()
-    {
-        _wasInCombat = ReadPlayerInCombat();
-        JustEnteredCombat = false;
-        JustLeftCombat = false;
-        _initialized = true;
-    }
-
     private static bool ReadPlayerInCombat()
     {
         var player = PluginServices.ObjectTable.LocalPlayer;

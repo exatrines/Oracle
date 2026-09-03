@@ -28,6 +28,8 @@ internal sealed class FFLogsImportPanel : IDisposable
     private bool _sceneFilterEnabled;
     private bool _autoLoadEnabled = true;
     private bool _importEnemyHitMemos;
+    private bool _importSync;
+    private uint _syncOptionTerritoryId;
     private string _zoneSearchFilter = string.Empty;
     private string _zoneLabel = string.Empty;
     private int _zoneAppliedForFightId = -1;
@@ -81,7 +83,7 @@ internal sealed class FFLogsImportPanel : IDisposable
             return;
 
         DrawTimelineMeta();
-        DrawEnemyHitMemosOption();
+        DrawImportOptions();
         DrawAutoLoadSection();
         DrawCreateButton(fight, player);
     }
@@ -229,35 +231,45 @@ internal sealed class FFLogsImportPanel : IDisposable
 
     private void DrawTimelineMeta()
     {
-        MirageUi.SubHeader(I18n.Get("fflogs.subheader.timeline"));
-        MirageUi.InputText(I18n.Get("fflogs.label.name"), ref _title, 80, id: "fflogsTitle");
-        DrawZoneField(editable: true, id: "fflogsZoneGroup");
+        ImportTimelineUi.DrawName(ref _title, "fflogsTitle");
+        ImportTimelineUi.DrawZoneField(
+            editable: true,
+            id: "fflogsZoneGroup",
+            ref _territoryTypeId,
+            ref _contentFinderConditionId,
+            ref _zoneClassJobLevel,
+            ref _zoneLabel,
+            ref _zoneSearchFilter);
     }
 
-    private void DrawEnemyHitMemosOption()
-    {
-        var importMemos = _importEnemyHitMemos;
-        if (MirageUi.Checkbox(I18n.Get("fflogs.checkbox.enemy_hit_memos"), ref importMemos))
-            _importEnemyHitMemos = importMemos;
-    }
+    private void DrawImportOptions() =>
+        ImportTimelineUi.DrawImportOptions(
+            ref _importEnemyHitMemos,
+            ref _importSync,
+            ref _syncOptionTerritoryId,
+            _territoryTypeId);
 
-    private void DrawAutoLoadSection()
-    {
-        MirageUi.SubHeader(I18n.Get("config.subheader.auto_load"));
-        var autoLoad = _autoLoadEnabled;
-        if (MirageUi.Checkbox(I18n.Get("config.checkbox.enable_auto_load"), ref autoLoad))
-            _autoLoadEnabled = autoLoad;
-
-        DrawZoneField(editable: false, id: "fflogsZoneReadonly");
-        DrawJobField();
-        DrawSceneField();
-    }
+    private void DrawAutoLoadSection() =>
+        ImportTimelineUi.DrawAutoLoad(
+            "fflogs",
+            ref _autoLoadEnabled,
+            ref _territoryTypeId,
+            ref _contentFinderConditionId,
+            ref _zoneClassJobLevel,
+            ref _zoneLabel,
+            ref _zoneSearchFilter,
+            ref _classJobId,
+            ref _sceneId,
+            ref _sceneFilterEnabled);
 
     private void DrawCreateButton(FFLogsFightInfo fight, FFLogsActorInfo player)
     {
         MirageUi.PaddedSeparator();
-        var allowed = C.GetFFLogsImportActionIds(ResolveClassJobId(player));
-        var canCreate = allowed.Count > 0 || _importEnemyHitMemos;
+        var canCreate = ImportTimelineUi.CanCreate(
+            ResolveClassJobId(player),
+            _territoryTypeId,
+            _importEnemyHitMemos,
+            _importSync);
         using (ImRaii.Disabled(_busy || !canCreate))
         {
             if (MirageUi.PrimaryButton(I18n.Get("fflogs.button.create_timeline"), id: "fflogsCreate"))
@@ -269,53 +281,6 @@ internal sealed class FFLogsImportPanel : IDisposable
             MirageUi.Text(
                 I18n.Get("fflogs.empty.no_import_actions"),
                 MirageUi.Color.Secondary);
-        }
-    }
-
-    private void DrawZoneField(bool editable, string id)
-    {
-        if (!editable)
-        {
-            ZoneCombo.DrawReadonly(
-                I18n.Get("config.label.zone"),
-                _territoryTypeId,
-                _contentFinderConditionId,
-                _zoneClassJobLevel,
-                id: id);
-            return;
-        }
-
-        ZoneCombo.Draw(
-            I18n.Get("config.label.zone_group"),
-            ref _territoryTypeId,
-            ref _contentFinderConditionId,
-            ref _zoneClassJobLevel,
-            ref _zoneLabel,
-            ref _zoneSearchFilter,
-            id: id);
-    }
-
-    private void DrawJobField()
-    {
-        var jobId = _classJobId;
-        if (!JobCombo.Draw(I18n.Get("config.label.job"), ref jobId, id: "fflogsJob"))
-            return;
-
-        _classJobId = jobId;
-    }
-
-    private void DrawSceneField()
-    {
-        var sceneId = _sceneId;
-        var filter = _sceneFilterEnabled;
-        if (SceneFilterField.DrawLabeled(
-                I18n.Get("config.label.scene_id"),
-                "fflogsScene",
-                ref filter,
-                ref sceneId))
-        {
-            _sceneFilterEnabled = filter;
-            _sceneId = Math.Max(0, sceneId);
         }
     }
 
@@ -387,7 +352,14 @@ internal sealed class FFLogsImportPanel : IDisposable
 
         var classJobId = ResolveClassJobId(player);
         var allowed = C.GetFFLogsImportActionIds(classJobId);
-        if (allowed.Count == 0 && !_importEnemyHitMemos)
+        var syncSpecs = _importSync
+            ? EnemySyncPresets.SpecsFor(_territoryTypeId)
+            : [];
+        var castSyncSpecs = syncSpecs.Where(s => s.SyncType == EnemySyncType.Cast).ToList();
+        var statusSyncSpecs = syncSpecs.Where(s => s.SyncType == EnemySyncType.Status).ToList();
+        if (allowed.Count == 0
+            && !_importEnemyHitMemos
+            && syncSpecs.Count == 0)
         {
             _status = I18n.Get("fflogs.status.select_actions");
             return;
@@ -412,12 +384,13 @@ internal sealed class FFLogsImportPanel : IDisposable
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
         var importMemos = _importEnemyHitMemos;
+        var importSync = _importSync;
 
         try
         {
-            var casts = allowed.Count == 0
-                ? (IReadOnlyList<FFLogsCastEvent>)[]
-                : await _client.GetCastsAsync(
+            var castsTask = allowed.Count == 0
+                ? Task.FromResult<IReadOnlyList<FFLogsCastEvent>>([])
+                : _client.GetCastsAsync(
                     code,
                     fight.Id,
                     player.Id,
@@ -425,23 +398,50 @@ internal sealed class FFLogsImportPanel : IDisposable
                     fight.EndTime,
                     C.FFLogsClientId,
                     C.FFLogsClientSecret,
-                    ct).ConfigureAwait(false);
-
-            var hits = importMemos
-                ? await _client.GetDamageTakenAsync(
+                    ct);
+            var hitsTask = importMemos
+                ? _client.GetDamageTakenAsync(
                     code,
                     fight.Id,
                     fight.StartTime,
                     fight.EndTime,
                     C.FFLogsClientId,
                     C.FFLogsClientSecret,
-                    ct).ConfigureAwait(false)
-                : [];
+                    ct)
+                : Task.FromResult<IReadOnlyList<FFLogsDamageHit>>([]);
+            var enemyCastsTask = castSyncSpecs.Count > 0
+                ? _client.GetEnemyCastsAsync(
+                    code,
+                    fight.Id,
+                    fight.StartTime,
+                    fight.EndTime,
+                    C.FFLogsClientId,
+                    C.FFLogsClientSecret,
+                    ct)
+                : Task.FromResult<IReadOnlyList<FFLogsCastEvent>>([]);
+            var statusEventsTask = statusSyncSpecs.Count > 0
+                ? _client.GetStatusEventsAsync(
+                    code,
+                    fight.Id,
+                    fight.StartTime,
+                    fight.EndTime,
+                    statusSyncSpecs.Select(s => s.ActionId).ToList(),
+                    C.FFLogsClientId,
+                    C.FFLogsClientSecret,
+                    ct)
+                : Task.FromResult<IReadOnlyList<FFLogsStatusEvent>>([]);
+
+            await Task.WhenAll(castsTask, hitsTask, enemyCastsTask, statusEventsTask).ConfigureAwait(false);
 
             PostToUi(() => FinishCreate(
-                casts,
-                hits,
+                castsTask.Result,
+                hitsTask.Result,
+                enemyCastsTask.Result,
+                statusEventsTask.Result,
                 importMemos,
+                importSync,
+                castSyncSpecs,
+                statusSyncSpecs,
                 fight,
                 player,
                 options,
@@ -470,7 +470,12 @@ internal sealed class FFLogsImportPanel : IDisposable
     private void FinishCreate(
         IReadOnlyList<FFLogsCastEvent> casts,
         IReadOnlyList<FFLogsDamageHit> hits,
+        IReadOnlyList<FFLogsCastEvent> enemyCasts,
+        IReadOnlyList<FFLogsStatusEvent> statusEvents,
         bool importMemos,
+        bool importSync,
+        IReadOnlyList<EnemySyncSpec> castSyncSpecs,
+        IReadOnlyList<EnemySyncSpec> statusSyncSpecs,
         FFLogsFightInfo fight,
         FFLogsActorInfo player,
         FFLogsImportOptions options,
@@ -491,8 +496,16 @@ internal sealed class FFLogsImportPanel : IDisposable
             var memos = importMemos
                 ? FFLogsBossMemoImport.BuildMemos(fight, hits)
                 : [];
+            var castSyncCues = importSync
+                ? FFLogsEnemySyncImport.BuildCastCues(fight, enemyCasts, castSyncSpecs)
+                : [];
+            var statusSyncCues = importSync
+                ? FFLogsEnemySyncImport.BuildStatusCues(fight, statusEvents, statusSyncSpecs)
+                : [];
             var cues = actionCues
                 .Concat(memos)
+                .Concat(castSyncCues)
+                .Concat(statusSyncCues)
                 .OrderBy(c => c.TimeOffsetSec)
                 .ThenBy(c => c.Kind)
                 .ToList();
@@ -500,6 +513,8 @@ internal sealed class FFLogsImportPanel : IDisposable
             {
                 if (allCues.Count > 0)
                     _status = I18n.Format("fflogs.status.no_match", allCues.Count);
+                else if (importSync)
+                    _status = I18n.Get("fflogs.status.no_enemy_sync");
                 else if (importMemos)
                     _status = I18n.Get("fflogs.status.no_enemy_hits");
                 else
@@ -520,13 +535,12 @@ internal sealed class FFLogsImportPanel : IDisposable
             }
 
             _onImported(document);
-            _status = memos.Count == 0
-                ? I18n.Format("fflogs.status.created", document.Name, actionCues.Count, allCues.Count)
-                : I18n.Format(
-                    "fflogs.status.created_with_memos",
-                    document.Name,
-                    actionCues.Count,
-                    memos.Count);
+            _status = FormatCreatedStatus(
+                document.Name,
+                actionCues.Count,
+                allCues.Count,
+                memos.Count,
+                castSyncCues.Count + statusSyncCues.Count);
             PluginServices.ChatGui.Print(
                 I18n.Format("fflogs.chat.imported", document.Name));
         }
@@ -534,6 +548,19 @@ internal sealed class FFLogsImportPanel : IDisposable
         {
             _busy = false;
         }
+    }
+
+    private static string FormatCreatedStatus(
+        string name,
+        int actionCount,
+        int allCastCount,
+        int memoCount,
+        int syncCount)
+    {
+        var status = memoCount > 0
+            ? I18n.Format("fflogs.status.created_with_memos", name, actionCount, memoCount)
+            : I18n.Format("fflogs.status.created", name, actionCount, allCastCount);
+        return ImportTimelineUi.WithSyncCount(status, syncCount);
     }
 
     private void InitDraftDefaults()
@@ -577,29 +604,31 @@ internal sealed class FFLogsImportPanel : IDisposable
                 ref _contentFinderConditionId,
                 ref _zoneClassJobLevel,
                 ref _zoneLabel);
-            return;
         }
-
-        var territory = (uint)fight.GameZoneId;
-        var preferName = !string.IsNullOrWhiteSpace(fight.Name)
-            ? fight.Name
-            : fight.GameZoneName;
-
-        if (DutyContentCatalog.TryResolveZoneFromTerritory(territory, preferName, out var option))
+        else
         {
-            _territoryTypeId = option.TerritoryTypeId;
-            _contentFinderConditionId = option.ContentFinderConditionId;
-            _zoneClassJobLevel = option.ClassJobLevel;
-            _zoneLabel = option.Label;
-            return;
-        }
+            var territory = (uint)fight.GameZoneId;
+            var preferName = !string.IsNullOrWhiteSpace(fight.Name)
+                ? fight.Name
+                : fight.GameZoneName;
 
-        _territoryTypeId = territory;
-        _contentFinderConditionId = 0;
-        _zoneClassJobLevel = 0;
-        _zoneLabel = !string.IsNullOrWhiteSpace(fight.GameZoneName)
-            ? $"{territory} | {fight.GameZoneName}"
-            : DutyContentCatalog.ResolveZoneLabel(territory, 0, 0);
+            if (DutyContentCatalog.TryResolveZoneFromTerritory(territory, preferName, out var option))
+            {
+                _territoryTypeId = option.TerritoryTypeId;
+                _contentFinderConditionId = option.ContentFinderConditionId;
+                _zoneClassJobLevel = option.ClassJobLevel;
+                _zoneLabel = option.Label;
+            }
+            else
+            {
+                _territoryTypeId = territory;
+                _contentFinderConditionId = 0;
+                _zoneClassJobLevel = 0;
+                _zoneLabel = !string.IsNullOrWhiteSpace(fight.GameZoneName)
+                    ? $"{territory} | {fight.GameZoneName}"
+                    : DutyContentCatalog.ResolveZoneLabel(territory, 0, 0);
+            }
+        }
     }
 
     private void ApplyPlayerJob(FFLogsActorInfo player)

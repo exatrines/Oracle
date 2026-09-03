@@ -1,6 +1,9 @@
+using System.Collections.Concurrent;
 using Dalamud.Interface.ImGuiNotification;
 using FFXIVClientStructs.FFXIV.Client.Game;
-using FFXIVClientStructs.FFXIV.Client.Graphics.Environment;
+using FFXIVClientStructs.FFXIV.Client.Game.Character;
+using FFXIVClientStructs.FFXIV.Client.Game.Network;
+using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using Oracle.Models;
 
 namespace Oracle.Services;
@@ -10,8 +13,12 @@ internal sealed class UpcomingCue
     public required TimelineCue Cue { get; init; }
     public float RemainingSeconds { get; init; }
 
+    /// <summary>Pre-fire or post-fire stroke is active.</summary>
     public bool IsHighlighting { get; init; }
+
+    /// <summary>Post-fire (after 0s). Timeline list shows NOW + remaining.</summary>
     public bool IsPostHighlight { get; init; }
+
     public float HighlightRemainingSec { get; init; }
 }
 
@@ -25,13 +32,22 @@ internal sealed class ActiveHighlight
 
 /// <summary>
 /// Resolves zone/scene/job timelines, runs countdown/combat clock, feeds overlay cues.
+/// Clock anchors: enemy cast start/effected and status apply/remove.
+/// Hook → queue → matching cue → ResyncClockTo.
 /// </summary>
-internal sealed class TimelineEngine : IDisposable
+internal sealed unsafe class TimelineEngine : IDisposable
 {
     private readonly TimelineStore _store;
+    private readonly ActionEffectReceiveHub _receiveHub;
+    private readonly ActorCastReceiveHub _castHub;
+    private readonly StatusManagerReceiveHub _statusHub;
     private readonly CombatSyncDetector _combat = new();
     private readonly CountdownSyncDetector _countdown = new();
-    private readonly ActionUseDetector _actionUse = new();
+    private readonly ActionUseDetector _actionUse;
+    private readonly ConcurrentQueue<uint> _pendingEnemyCastActionIds = new();
+    private readonly ConcurrentQueue<uint> _pendingEnemyEffectActionIds = new();
+    private readonly ConcurrentQueue<uint> _pendingStatusApplyIds = new();
+    private readonly ConcurrentQueue<uint> _pendingStatusRemoveIds = new();
 
     private TimelineDocument? _activeDoc;
     private DateTime _syncUtc;
@@ -49,22 +65,37 @@ internal sealed class TimelineEngine : IDisposable
     private uint _manualLoadTerritory;
     private uint _lastPlayerJobId;
     private bool _hasTrackedPlayerJob;
-    private uint _prevGameSceneId;
-    private bool _hasPrevGameScene;
+
+    private readonly HashSet<string> _appliedAnchorCueIds = new(StringComparer.Ordinal);
 
     // --- Lifecycle ---
 
-    public TimelineEngine(TimelineStore store)
+    public TimelineEngine(
+        TimelineStore store,
+        ActionEffectReceiveHub receiveHub,
+        ActorCastReceiveHub castHub,
+        StatusManagerReceiveHub statusHub)
     {
         _store = store;
+        _receiveHub = receiveHub;
+        _castHub = castHub;
+        _statusHub = statusHub;
+        _actionUse = new ActionUseDetector(receiveHub);
         _countdown.Subscribe();
         _actionUse.Subscribe();
+        _castHub.Received += OnEnemyCastReceived;
+        _receiveHub.Received += OnEnemyEffectReceived;
+        _statusHub.Received += OnStatusChanged;
     }
 
     public void Dispose()
     {
+        _statusHub.Received -= OnStatusChanged;
+        _receiveHub.Received -= OnEnemyEffectReceived;
+        _castHub.Received -= OnEnemyCastReceived;
         _countdown.Dispose();
         _actionUse.Dispose();
+        ClearPendingClockSync();
     }
 
     // --- Status ---
@@ -78,11 +109,9 @@ internal sealed class TimelineEngine : IDisposable
     public bool IsContextMatched =>
         ResolveDocumentForPlayer() != null;
 
-    public uint CurrentGameSceneId => ReadGameSceneId();
+    public uint CurrentGameSceneId => GameScene.ReadId();
 
     public uint? LockedSceneId => _lockedSceneId;
-
-    public uint EffectiveSceneId => _lockedSceneId ?? ReadGameSceneId();
 
     public float ElapsedSeconds =>
         _running ? _clockOffset + (float)(DateTime.UtcNow - _syncUtc).TotalSeconds : 0f;
@@ -99,7 +128,7 @@ internal sealed class TimelineEngine : IDisposable
     }
 
     public bool MatchesLiveScene(TimelineDocument doc) =>
-        MatchesScene(doc, ReadGameSceneId());
+        MatchesScene(doc, GameScene.ReadId());
 
     private TimelineDocument? ResolveDocumentForPlayer()
     {
@@ -120,7 +149,7 @@ internal sealed class TimelineEngine : IDisposable
         var territory = PluginServices.ClientState.TerritoryType;
         var player = PluginServices.ObjectTable.LocalPlayer;
         var playerJob = player?.ClassJob.RowId ?? 0;
-        var scene = ReadGameSceneId();
+        var scene = GameScene.ReadId();
 
         var candidates = _store.Documents
             .Select((d, index) => (Doc: d, Index: index))
@@ -154,22 +183,6 @@ internal sealed class TimelineEngine : IDisposable
         if (doc.SceneFilterEnabled && doc.SceneId == scene)
             score += 1_000;
         return score;
-    }
-
-    private static unsafe uint ReadGameSceneId()
-    {
-        try
-        {
-            var env = EnvManager.Instance();
-            if (env == null)
-                return 0;
-            // Undocumented field; Splatoon caches (byte*)(EnvManager + 36).
-            return *((byte*)env + 0x24);
-        }
-        catch
-        {
-            return 0;
-        }
     }
 
     // --- Load ---
@@ -221,25 +234,10 @@ internal sealed class TimelineEngine : IDisposable
         ClearTimelineState();
     }
 
-    public void InjectCountdown(float remainingSeconds)
-    {
-        _countdown.Inject(remainingSeconds);
-        PluginServices.ChatGui.Print(
-            I18n.Format("engine.chat.countdown_inject", remainingSeconds, -remainingSeconds));
-    }
-
-    public void Reset()
-    {
-        ClearTimelineState();
-        _combat.Reset();
-        _countdown.Reset();
-        _actionUse.Reset();
-    }
-
     private void StartClock(TimelineDocument doc, float clockOffset, bool preview)
     {
         // Capture scene at countdown / combat (or preview) start; keep until StopClock / resync.
-        _lockedSceneId = ReadGameSceneId();
+        _lockedSceneId = GameScene.ReadId();
         _previewMode = preview;
         Activate(doc, clockOffset);
     }
@@ -249,7 +247,7 @@ internal sealed class TimelineEngine : IDisposable
         if (!_running || _activeDoc == null)
             return;
 
-        _lockedSceneId = ReadGameSceneId();
+        _lockedSceneId = GameScene.ReadId();
         _syncUtc = DateTime.UtcNow;
         _clockOffset = timeOffsetSec;
         _completedCueIds.Clear();
@@ -257,14 +255,7 @@ internal sealed class TimelineEngine : IDisposable
         _highlights.Clear();
         _actionUse.Reset();
 
-        var elapsed = ElapsedSeconds;
-        foreach (var cue in _activeDoc.Cues)
-        {
-            if (cue.Kind == TimelineCueKind.SceneTransition)
-                continue;
-            if (GetDisplayOffset(cue) - elapsed < -0.05f)
-                _completedCueIds.Add(cue.Id);
-        }
+        MarkCuesAlreadyPassed(_activeDoc, ElapsedSeconds);
     }
 
     private static void NotifyTimelineLoad(bool manual, TimelineDocument doc)
@@ -289,6 +280,7 @@ internal sealed class TimelineEngine : IDisposable
         _completedCueIds.Clear();
         _startedHighlightIds.Clear();
         _highlights.Clear();
+        ClearClockAnchors();
     }
 
     private void ClearTimelineState()
@@ -297,7 +289,6 @@ internal sealed class TimelineEngine : IDisposable
         _activeDoc = null;
         _manualLoadId = null;
         _manualLoadTerritory = 0;
-        _hasPrevGameScene = false;
     }
 
     private void Activate(TimelineDocument doc, float clockOffset)
@@ -310,15 +301,9 @@ internal sealed class TimelineEngine : IDisposable
         _startedHighlightIds.Clear();
         _highlights.Clear();
         _actionUse.Reset();
+        ClearClockAnchors();
 
-        var elapsed = ElapsedSeconds;
-        foreach (var cue in doc.Cues)
-        {
-            if (cue.Kind == TimelineCueKind.SceneTransition)
-                continue;
-            if (GetDisplayOffset(cue) - elapsed < -0.05f)
-                _completedCueIds.Add(cue.Id);
-        }
+        MarkCuesAlreadyPassed(doc, ElapsedSeconds);
     }
 
     // --- Update (per frame) ---
@@ -335,13 +320,17 @@ internal sealed class TimelineEngine : IDisposable
 
         var doc = _activeDoc!;
         ApplyCountdownStart(doc);
-        ApplyCombatEdges(doc);
+        if (_combat.JustEnteredCombat && !_running)
+            StartClock(doc, clockOffset: ResolveCombatStartOffset(), preview: false);
 
         if (_running)
         {
-            ApplySceneTransitions();
+            ApplyClockAnchors();
             ProcessCueFires();
         }
+
+        if (_combat.JustLeftCombat)
+            StopClock();
 
         DrainUsedActions();
     }
@@ -423,40 +412,131 @@ internal sealed class TimelineEngine : IDisposable
             StartClock(doc, -Math.Abs(_countdown.StartedRemaining), preview: false);
     }
 
-    private void ApplyCombatEdges(TimelineDocument doc)
+    // Hook edge → matching cue → ResyncClockTo.
+    private void ApplyClockAnchors()
     {
-        if (_combat.JustLeftCombat)
-            StopClock();
-        else if (_combat.JustEnteredCombat && !_running)
-            StartClock(doc, clockOffset: ResolveCombatStartOffset(), preview: false);
+        if (_activeDoc is null || !_running)
+        {
+            ClearPendingClockSync();
+            return;
+        }
+
+        DrainClockSyncQueue(_pendingEnemyCastActionIds, status: false, edge: false);
+        DrainClockSyncQueue(_pendingEnemyEffectActionIds, status: false, edge: true);
+        DrainClockSyncQueue(_pendingStatusApplyIds, status: true, edge: false);
+        DrainClockSyncQueue(_pendingStatusRemoveIds, status: true, edge: true);
     }
 
-    private void ApplySceneTransitions()
+    private unsafe void OnEnemyCastReceived(uint casterEntityId, ActorCastPacket* packet)
     {
-        var scene = ReadGameSceneId();
-        if (!_hasPrevGameScene)
-        {
-            _prevGameSceneId = scene;
-            _hasPrevGameScene = true;
+        if (packet == null)
             return;
-        }
-
-        var prev = _prevGameSceneId;
-        _prevGameSceneId = scene;
-        if (prev == scene || _activeDoc == null || !_running)
+        if (!EnemyHitRules.TryMatchCastStart(
+                casterEntityId,
+                packet->ActionId,
+                (byte)packet->ActionType,
+                out var hit))
             return;
+        _pendingEnemyCastActionIds.Enqueue(hit.ActionId);
+    }
 
-        foreach (var cue in _activeDoc.Cues)
+    private unsafe void OnEnemyEffectReceived(
+        uint casterEntityId,
+        Character* casterPtr,
+        ActionEffectHandler.Header* header,
+        ActionEffectHandler.TargetEffects* effects,
+        GameObjectId* targetEntityIds)
+    {
+        if (!EnemyHitRules.TryMatchCastEffected(casterEntityId, header, out var hit))
+            return;
+        _pendingEnemyEffectActionIds.Enqueue(hit.ActionId);
+    }
+
+    private void OnStatusChanged(uint statusId, bool removed, uint sourceEntityId)
+    {
+        if (statusId == 0)
+            return;
+        if (removed)
+            _pendingStatusRemoveIds.Enqueue(statusId);
+        else
+            _pendingStatusApplyIds.Enqueue(statusId);
+    }
+
+    private void DrainClockSyncQueue(ConcurrentQueue<uint> queue, bool status, bool edge)
+    {
+        while (queue.TryDequeue(out var id))
         {
-            if (cue.Kind != TimelineCueKind.SceneTransition)
-                continue;
-            if (cue.SceneBefore == cue.SceneAfter)
-                continue;
-            if (prev != cue.SceneBefore || scene != cue.SceneAfter)
+            TimelineCue? match = null;
+            foreach (var cue in _activeDoc!.Cues)
+            {
+                if (!CueMatchesAnchor(cue, id, status, edge))
+                    continue;
+                if (_appliedAnchorCueIds.Contains(cue.Id))
+                    continue;
+                if (match is null || cue.TimeOffsetSec < match.TimeOffsetSec)
+                    match = cue;
+            }
+
+            if (match is null)
                 continue;
 
-            ResyncClockTo(cue.TimeOffsetSec);
+            _appliedAnchorCueIds.Add(match.Id);
+            var from = ElapsedSeconds;
+            ResyncClockTo(match.TimeOffsetSec);
+            LogClockSync(match, from);
         }
+    }
+
+    private static bool CueMatchesAnchor(TimelineCue cue, uint id, bool status, bool edge) =>
+        (status ? cue.IsStatusSync : cue.IsCastSync)
+        && cue.Effected == edge
+        && cue.ActionId == id;
+
+    private static void LogClockSync(TimelineCue cue, float fromSec)
+    {
+        var status = cue.IsStatusSync;
+        PluginServices.Log.Information(
+            "{Kind:l} sync {Name:l} id={Id} edge={Edge:l} {From:l} -> {To:l}",
+            status ? "Status" : "Cast",
+            status ? ActionLookup.GetStatusName(cue.ActionId) : ActionLookup.GetName(cue.ActionId),
+            cue.ActionId,
+            status
+                ? (cue.Effected ? "Remove" : "Apply")
+                : (cue.Effected ? "Effected" : "Start"),
+            CueTime.Format(fromSec),
+            CueTime.Format(cue.TimeOffsetSec));
+    }
+
+    private void ClearPendingClockSync()
+    {
+        Discard(_pendingEnemyCastActionIds);
+        Discard(_pendingEnemyEffectActionIds);
+        Discard(_pendingStatusApplyIds);
+        Discard(_pendingStatusRemoveIds);
+    }
+
+    private static void Discard(ConcurrentQueue<uint> queue)
+    {
+        while (queue.TryDequeue(out _))
+        {
+        }
+    }
+
+    private void MarkCuesAlreadyPassed(TimelineDocument doc, float elapsed)
+    {
+        foreach (var cue in doc.Cues)
+        {
+            if (SkipsCueFire(cue))
+                continue;
+            if (GetDisplayOffset(cue) - elapsed < -0.05f)
+                _completedCueIds.Add(cue.Id);
+        }
+    }
+
+    private void ClearClockAnchors()
+    {
+        _appliedAnchorCueIds.Clear();
+        ClearPendingClockSync();
     }
 
     /// <summary>
@@ -494,7 +574,7 @@ internal sealed class TimelineEngine : IDisposable
         var elapsed = ElapsedSeconds;
         foreach (var cue in _activeDoc.Cues)
         {
-            if (cue.Kind == TimelineCueKind.SceneTransition)
+            if (SkipsCueFire(cue))
                 continue;
             if (_completedCueIds.Contains(cue.Id) || _startedHighlightIds.Contains(cue.Id))
                 continue;
@@ -624,6 +704,7 @@ internal sealed class TimelineEngine : IDisposable
             var highlighting = _highlights.FirstOrDefault(h => h.CueId == cue.Id);
             if (highlighting != null)
             {
+                // Keep the cue while post-fire highlight or Major after-window still covers it.
                 var sinceStart = (float)(now - highlighting.StartedUtc).TotalSeconds;
                 var highlightAfter = Math.Max(0f, C.ActionHighlightAfterSeconds);
                 var majorVisibleAfter = Math.Max(0f, C.MajorAfterSeconds);
@@ -645,6 +726,7 @@ internal sealed class TimelineEngine : IDisposable
 
             if (!_running)
             {
+                // Stopped: show cues around clock zero within lookahead.
                 if (displayOffset < -lookaheadSeconds || displayOffset > lookaheadSeconds)
                     continue;
                 list.Add(new UpcomingCue
@@ -660,6 +742,7 @@ internal sealed class TimelineEngine : IDisposable
 
             if (remaining <= lookaheadSeconds)
             {
+                // Running: future cues, with pre-fire highlight when inside the before window.
                 var pre = IsCueBeforeHighlightActive(remaining);
                 list.Add(new UpcomingCue
                 {
@@ -682,6 +765,10 @@ internal sealed class TimelineEngine : IDisposable
         var cast = ActionTiming.GetCastSeconds(cue);
         return cue.TimeOffsetSec - cast;
     }
+
+    // Overlay skip only; clock anchors resync separately.
+    private static bool SkipsCueFire(TimelineCue cue) =>
+        cue.Kind == TimelineCueKind.Sync;
 
     private static bool IsCueBeforeHighlightActive(float remainingSeconds)
     {

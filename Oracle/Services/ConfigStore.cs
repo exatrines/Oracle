@@ -1,6 +1,3 @@
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
 using Oracle.Models;
 
 namespace Oracle.Services;
@@ -8,13 +5,6 @@ namespace Oracle.Services;
 /// <summary>Timeline JSON files under the plugin config directory.</summary>
 internal sealed class ConfigStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNameCaseInsensitive = true,
-        Converters = { new JsonStringEnumConverter() },
-    };
-
     private readonly string _timelinesDir;
 
     public ConfigStore(IDalamudPluginInterface pluginInterface)
@@ -34,13 +24,12 @@ internal sealed class ConfigStore
         {
             try
             {
-                var json = File.ReadAllText(path);
-                var doc = DeserializeDocument(json);
+                var doc = TimelineJson.TryLoadFile(path, out var dropped);
                 if (doc == null)
                     continue;
 
-                // Keep Id aligned with the on-disk file stem (name-based).
-                doc.Id = Path.GetFileNameWithoutExtension(path);
+                if (dropped > 0)
+                    PluginServices.Log.Information("Ignored {Count} retired cue(s) in {Path}", dropped, path);
                 docs.Add(doc);
             }
             catch (Exception ex)
@@ -65,7 +54,7 @@ internal sealed class ConfigStore
 
         document.Id = stem;
         SanitizeCueLabels(document);
-        File.WriteAllText(newPath, JsonSerializer.Serialize(document, JsonOptions));
+        File.WriteAllText(newPath, TimelineJson.SerializeDocument(document));
 
         if (!string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase)
             && File.Exists(oldPath))
@@ -77,9 +66,20 @@ internal sealed class ConfigStore
         foreach (var cue in document.Cues)
         {
             if (cue.Kind == TimelineCueKind.Action)
+            {
                 cue.Label = string.Empty;
+                cue.Effected = false;
+                cue.SyncType = default;
+            }
             else
+            {
                 CueTargetCatalog.Clear(cue);
+                if (cue.Kind != TimelineCueKind.Sync)
+                {
+                    cue.Effected = false;
+                    cue.SyncType = default;
+                }
+            }
         }
     }
 
@@ -94,24 +94,6 @@ internal sealed class ConfigStore
 
         File.Delete(path);
         return true;
-    }
-
-    private static TimelineDocument? DeserializeDocument(string json)
-    {
-        var node = JsonNode.Parse(json);
-        if (node is not JsonObject obj)
-            return null;
-
-        if ((obj["Cues"] is not JsonArray cues || cues.Count == 0) &&
-            obj["Scenes"] is JsonArray { Count: > 0 } scenes &&
-            scenes[0] is JsonObject firstScene &&
-            firstScene["Cues"] is JsonArray legacyCues)
-        {
-            obj["Cues"] = legacyCues.DeepClone();
-        }
-
-        obj.Remove("Scenes");
-        return obj.Deserialize<TimelineDocument>(JsonOptions);
     }
 
     internal static string ToFileStem(string? name)

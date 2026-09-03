@@ -1,16 +1,21 @@
 using FFXIVClientStructs.FFXIV.Client.Game;
-using FFXIVClientStructs.FFXIV.Client.Graphics.Environment;
+using FFXIVClientStructs.FFXIV.Client.Game.Character;
+using FFXIVClientStructs.FFXIV.Client.Game.Network;
+using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using Oracle.Models;
 
 namespace Oracle.Services.AutoRecord;
 
 /// <summary>
-/// Records action uses from combat enter to leave into AutoRecord JSON files.
+/// Records player actions, enemy cast start / effected, and non-friendly status apply/remove.
 /// </summary>
-internal sealed class AutoRecordService : IDisposable
+internal sealed unsafe class AutoRecordService : IDisposable
 {
     private readonly AutoRecordStore _store;
     private readonly ActionUseDetector _actionUse;
+    private readonly ActionEffectReceiveHub _receiveHub;
+    private readonly ActorCastReceiveHub _castHub;
+    private readonly StatusManagerReceiveHub _statusHub;
     private readonly CombatSyncDetector _combat = new();
 
     private bool _recording;
@@ -59,11 +64,22 @@ internal sealed class AutoRecordService : IDisposable
         }
     }
 
-    public AutoRecordService(AutoRecordStore store, ActionUseDetector actionUse)
+    public AutoRecordService(
+        AutoRecordStore store,
+        ActionUseDetector actionUse,
+        ActionEffectReceiveHub receiveHub,
+        ActorCastReceiveHub castHub,
+        StatusManagerReceiveHub statusHub)
     {
         _store = store;
         _actionUse = actionUse;
+        _receiveHub = receiveHub;
+        _castHub = castHub;
+        _statusHub = statusHub;
         _actionUse.ActionUsed += OnActionUsed;
+        _receiveHub.Received += OnEnemyEffectReceived;
+        _castHub.Received += OnEnemyCastReceived;
+        _statusHub.Received += OnStatusChanged;
         _lastTerritoryTypeId = PluginServices.ClientState.TerritoryType;
     }
 
@@ -124,6 +140,9 @@ internal sealed class AutoRecordService : IDisposable
     public void Dispose()
     {
         _actionUse.ActionUsed -= OnActionUsed;
+        _receiveHub.Received -= OnEnemyEffectReceived;
+        _castHub.Received -= OnEnemyCastReceived;
+        _statusHub.Received -= OnStatusChanged;
         lock (_gate)
         {
             _recording = false;
@@ -374,21 +393,45 @@ internal sealed class AutoRecordService : IDisposable
             ClassJobId = _classJobId,
             SceneId = _sceneId,
             SceneFilterEnabled = true,
-            Cues = _cues
-                .Select(c =>
-                {
-                    var copy = new TimelineCue
-                    {
-                        TimeOffsetSec = c.TimeOffsetSec,
-                        Kind = TimelineCueKind.Action,
-                        ActionId = c.ActionId,
-                    };
-                    CueTargetCatalog.Copy(c, copy);
-                    return copy;
-                })
-                .ToList(),
+            Cues = BuildPersistedCuesUnlocked(),
         };
         return true;
+    }
+
+    private List<TimelineCue> BuildPersistedCuesUnlocked()
+    {
+        var cues = new List<TimelineCue>(_cues.Count);
+        var effectedCasts = new List<TimelineCue>();
+        foreach (var c in _cues)
+        {
+            if (c.IsCastSync && c.Effected)
+            {
+                effectedCasts.Add(c);
+                continue;
+            }
+
+            cues.Add(c.CopyForDocument());
+        }
+
+        var clustered = HitMemoCluster.Cluster(
+            effectedCasts.Select(c => ((double)c.TimeOffsetSec, c.ActionId, string.Empty)),
+            HitMemoCluster.GapSec);
+        foreach (var hit in clustered)
+        {
+            cues.Add(new TimelineCue
+            {
+                TimeOffsetSec = (float)hit.Time,
+                Kind = TimelineCueKind.Sync,
+                ActionId = hit.ActionId,
+                SyncType = EnemySyncType.Cast,
+                Effected = true,
+            });
+        }
+
+        return cues
+            .OrderBy(c => c.TimeOffsetSec)
+            .ThenBy(c => c.Kind)
+            .ToList();
     }
 
     private void Persist(TimelineDocument doc, string stem)
@@ -443,6 +486,92 @@ internal sealed class AutoRecordService : IDisposable
         }
     }
 
+    private void OnEnemyEffectReceived(
+        uint casterEntityId,
+        Character* casterPtr,
+        ActionEffectHandler.Header* header,
+        ActionEffectHandler.TargetEffects* effects,
+        GameObjectId* targetEntityIds)
+    {
+        if (!C.AutoRecordEnabled)
+            return;
+        if (IsDutyReplayPlayback())
+            return;
+        if (!EnemyHitRules.TryMatchCastEffected(casterEntityId, header, out var hit))
+            return;
+
+        lock (_gate)
+        {
+            if (!_recording)
+                return;
+
+            var offset = MathF.Round((float)(DateTime.UtcNow - _startedUtc).TotalSeconds, 1);
+            _cues.Add(new TimelineCue
+            {
+                TimeOffsetSec = offset,
+                Kind = TimelineCueKind.Sync,
+                ActionId = hit.ActionId,
+                SyncType = EnemySyncType.Cast,
+                Effected = true,
+            });
+        }
+    }
+
+    private void OnEnemyCastReceived(uint casterEntityId, ActorCastPacket* packet)
+    {
+        if (!C.AutoRecordEnabled || packet == null)
+            return;
+        if (IsDutyReplayPlayback())
+            return;
+        if (!EnemyHitRules.TryMatchCastStart(
+                casterEntityId,
+                packet->ActionId,
+                (byte)packet->ActionType,
+                out var hit))
+            return;
+
+        lock (_gate)
+        {
+            if (!_recording)
+                return;
+
+            var offset = MathF.Round((float)(DateTime.UtcNow - _startedUtc).TotalSeconds, 1);
+            _cues.Add(new TimelineCue
+            {
+                TimeOffsetSec = offset,
+                Kind = TimelineCueKind.Sync,
+                ActionId = hit.ActionId,
+                SyncType = EnemySyncType.Cast,
+            });
+        }
+    }
+
+    private void OnStatusChanged(uint statusId, bool removed, uint sourceEntityId)
+    {
+        if (!C.AutoRecordEnabled || statusId == 0)
+            return;
+        if (IsDutyReplayPlayback())
+            return;
+        if (sourceEntityId != 0 && sourceEntityId != 0xE0000000 && EnemyHitRules.IsFriendlyEntity(sourceEntityId))
+            return;
+
+        lock (_gate)
+        {
+            if (!_recording)
+                return;
+
+            var offset = MathF.Round((float)(DateTime.UtcNow - _startedUtc).TotalSeconds, 1);
+            _cues.Add(new TimelineCue
+            {
+                TimeOffsetSec = offset,
+                Kind = TimelineCueKind.Sync,
+                ActionId = statusId,
+                SyncType = EnemySyncType.Status,
+                Effected = removed,
+            });
+        }
+    }
+
     private static unsafe bool IsDutyReplayPlayback()
     {
         try
@@ -468,7 +597,7 @@ internal sealed class AutoRecordService : IDisposable
     {
         _territoryTypeId = PluginServices.ClientState.TerritoryType;
         _classJobId = PluginServices.ObjectTable.LocalPlayer?.ClassJob.RowId ?? 0;
-        _sceneId = ReadGameSceneId();
+        _sceneId = GameScene.ReadId();
         _contentFinderConditionId = 0;
         _classJobLevel = 0;
         _contentLabel = string.Empty;
@@ -501,20 +630,5 @@ internal sealed class AutoRecordService : IDisposable
             : body;
     }
 
-    public uint CurrentGameSceneId => ReadGameSceneId();
-
-    private static unsafe uint ReadGameSceneId()
-    {
-        try
-        {
-            var env = EnvManager.Instance();
-            if (env == null)
-                return 0;
-            return *((byte*)env + 0x24);
-        }
-        catch
-        {
-            return 0;
-        }
-    }
+    public uint CurrentGameSceneId => GameScene.ReadId();
 }

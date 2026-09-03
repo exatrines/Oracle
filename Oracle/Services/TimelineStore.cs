@@ -71,20 +71,7 @@ internal sealed class TimelineStore
             SceneFilterEnabled = source.SceneFilterEnabled,
             ClassJobId = source.ClassJobId,
             ClassJobLevel = source.ClassJobLevel,
-            Cues = source.Cues
-                .Select(c => new TimelineCue
-                {
-                    TimeOffsetSec = c.TimeOffsetSec,
-                    Kind = c.Kind,
-                    ActionId = c.ActionId,
-                    Label = c.Kind == TimelineCueKind.Memo ? c.Label : string.Empty,
-                    TargetKind = c.Kind == TimelineCueKind.Action ? c.TargetKind : CueTargetKind.None,
-                    TargetJobId = c.Kind == TimelineCueKind.Action ? c.TargetJobId : 0,
-                    TargetRole = c.Kind == TimelineCueKind.Action ? c.TargetRole : CueTargetRole.None,
-                    SceneBefore = c.SceneBefore,
-                    SceneAfter = c.SceneAfter,
-                })
-                .ToList(),
+            Cues = source.Cues.Select(c => c.CopyForDocument()).ToList(),
         };
 
         _configStore.Save(copy);

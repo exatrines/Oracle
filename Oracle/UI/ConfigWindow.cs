@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Oracle.Models;
 using Oracle.Services;
 
@@ -38,15 +36,15 @@ internal sealed partial class ConfigWindow : Window
     private string? _cueTimeDraftId;
 
     /// <summary>Draft row below the cue table (not yet committed).</summary>
-    private string _newCueTimeText = "00:00";
+    private string _newCueTimeText = "00:00.000";
     private TimelineCueKind _newCueKind = TimelineCueKind.Action;
     private string _newCueMemo = string.Empty;
     private uint _newCueActionId;
     private CueTargetKind _newCueTargetKind;
     private uint _newCueTargetJobId;
     private CueTargetRole _newCueTargetRole;
-    private int _newCueSceneBefore;
-    private int _newCueSceneAfter;
+    private bool _newCueEffected;
+    private EnemySyncType _newCueSyncType;
     private string? _newCueDraftDocId;
 
     /// <summary>Selected cue ids in the editor table (checkboxes).</summary>
@@ -55,17 +53,8 @@ internal sealed partial class ConfigWindow : Window
     /// <summary>When set, the next action pick replaces this cue instead of adding.</summary>
     private string? _actionPickCueId;
 
-    /// <summary>When false, cue-table edits stay in-memory (AutoRecord import preview).</summary>
-    private bool _cueTablePersist = true;
-
     private const string ActionPickDraftId = "__draft__";
     private const string CueClipboardFormat = "Oracle.Cues.v1";
-
-    private static readonly JsonSerializerOptions CueClipboardJsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        Converters = { new JsonStringEnumConverter() },
-    };
 
     /// <summary>Sidebar tint for the timeline currently loaded by the engine (auto or manual).</summary>
     private static readonly Vector4 StandbyMatchGreen = new(0.45f, 0.85f, 0.45f, 1f);

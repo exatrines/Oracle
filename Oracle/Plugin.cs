@@ -22,8 +22,12 @@ public sealed class Plugin : IDalamudPlugin
     private readonly MajorOverlayWindow _majorOverlayWindow;
     private readonly AutoRecordOverlayWindow _autoRecordOverlayWindow;
     private readonly FFLogsImportPanel _ffLogsImportPanel;
+    private readonly ActionEffectReceiveHub _actionEffectReceive;
+    private readonly ActorCastReceiveHub _actorCastReceive;
+    private readonly StatusManagerReceiveHub _statusReceive;
     private readonly TimelineEngine _engine;
     private readonly AutoRecordService _autoRecord;
+    private readonly PluginLogService _pluginLog;
     private readonly HotbarHighlightService _hotbarHighlight;
     private readonly CommandInfo _oracleCommand;
 
@@ -61,30 +65,41 @@ public sealed class Plugin : IDalamudPlugin
         // 2. Timeline persistence, runtime engine, auto-record
         var configStore = new ConfigStore(pluginInterface);
         var timelineStore = new TimelineStore(configStore);
-        _engine = new TimelineEngine(timelineStore);
+        _actionEffectReceive = new ActionEffectReceiveHub();
+        _actorCastReceive = new ActorCastReceiveHub();
+        _statusReceive = new StatusManagerReceiveHub();
+        _engine = new TimelineEngine(timelineStore, _actionEffectReceive, _actorCastReceive, _statusReceive);
+        _pluginLog = new PluginLogService(_actionEffectReceive, _actorCastReceive, _statusReceive);
+        _actionEffectReceive.Subscribe();
+        _actorCastReceive.Subscribe();
+        _statusReceive.Subscribe();
         var autoRecordStore = new AutoRecordStore(pluginInterface);
-        _autoRecord = new AutoRecordService(autoRecordStore, _engine.ActionUse);
+        _autoRecord = new AutoRecordService(
+            autoRecordStore,
+            _engine.ActionUse,
+            _actionEffectReceive,
+            _actorCastReceive,
+            _statusReceive);
         _hotbarHighlight = new HotbarHighlightService(_engine);
 
         // 3. ImGui windows — ActionSearch / import panels capture ConfigWindow via delayed assign
         _pluginSettingsWindow = new PluginSettingsWindow();
 
-        ConfigWindow? timelineWindow = null;
+        ConfigWindow timelineWindow = null!;
         var actionSearch = new ActionSearchWindow(
-            getClassJobId: () => (timelineWindow?.EditDocument ?? timelineStore.ActiveDocument)?.ClassJobId ?? 0,
-            setClassJobId: id => timelineWindow?.SetEditDocumentClassJob(id),
-            getTerritoryTypeId: () => (timelineWindow?.EditDocument ?? timelineStore.ActiveDocument)?.TerritoryTypeId ?? 0,
+            getClassJobId: () => (timelineWindow.EditDocument ?? timelineStore.ActiveDocument)?.ClassJobId ?? 0,
+            setClassJobId: id => timelineWindow.SetEditDocumentClassJob(id),
+            getTerritoryTypeId: () => (timelineWindow.EditDocument ?? timelineStore.ActiveDocument)?.TerritoryTypeId ?? 0,
             getContentFinderConditionId: () =>
-                (timelineWindow?.EditDocument ?? timelineStore.ActiveDocument)?.ContentFinderConditionId ?? 0,
-            getClassJobLevel: () => (timelineWindow?.EditDocument ?? timelineStore.ActiveDocument)?.ClassJobLevel ?? 0,
-            onPicked: action => timelineWindow?.ApplyPickedAction(action));
+                (timelineWindow.EditDocument ?? timelineStore.ActiveDocument)?.ContentFinderConditionId ?? 0,
+            getClassJobLevel: () => (timelineWindow.EditDocument ?? timelineStore.ActiveDocument)?.ClassJobLevel ?? 0,
+            onPicked: action => timelineWindow.ApplyPickedAction(action));
 
-        FFLogsImportPanel? ffLogsImport = null;
-        ffLogsImport = new FFLogsImportPanel(onImported: doc => timelineWindow?.SelectImportedTimeline(doc));
+        var ffLogsImport = new FFLogsImportPanel(onImported: doc => timelineWindow.SelectImportedTimeline(doc));
 
         var autoRecordImport = new AutoRecordImportPanel(
             autoRecordStore,
-            onImported: doc => timelineWindow?.SelectImportedTimeline(doc));
+            onImported: doc => timelineWindow.SelectImportedTimeline(doc));
 
         timelineWindow = new ConfigWindow(
             timelineStore,
@@ -94,8 +109,8 @@ public sealed class Plugin : IDalamudPlugin
             autoRecordImport,
             openPluginSettings: TogglePluginSettings);
 
-        _timelineConfigWindow = timelineWindow!;
-        _ffLogsImportPanel = ffLogsImport!;
+        _timelineConfigWindow = timelineWindow;
+        _ffLogsImportPanel = ffLogsImport;
         _overlayWindow = new CueOverlayWindow(_engine);
         _majorOverlayWindow = new MajorOverlayWindow(_engine);
         _autoRecordOverlayWindow = new AutoRecordOverlayWindow(
@@ -320,6 +335,7 @@ public sealed class Plugin : IDalamudPlugin
     {
         _engine.Update();
         _autoRecord.Update();
+        _pluginLog.Update();
     }
 
     private void DrawUi()
@@ -341,7 +357,11 @@ public sealed class Plugin : IDalamudPlugin
         PluginServices.PluginInterface.UiBuilder.OpenMainUi -= ToggleTimelineSettings;
 
         _autoRecord.Dispose();
+        _pluginLog.Dispose();
         _engine.Dispose();
+        _actionEffectReceive.Dispose();
+        _actorCastReceive.Dispose();
+        _statusReceive.Dispose();
         _ffLogsImportPanel.Dispose();
 
         C.Save();

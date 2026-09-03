@@ -1,7 +1,5 @@
 using System.Collections.Concurrent;
-using System.Numerics;
 using Dalamud.Game.ClientState.Objects.Types;
-using Dalamud.Hooking;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Character;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
@@ -9,48 +7,30 @@ using FFXIVClientStructs.FFXIV.Client.Game.Object;
 namespace Oracle.Services;
 
 /// <summary>
-/// Confirms local-player ability execution via ActionEffectHandler.Receive (server ActionEffect).
+/// Confirms local-player ability execution via ActionEffect Receive (server ActionEffect).
 /// Unlike UseAction, this ignores hotbar spam / queue that does not actually fire.
 /// </summary>
 internal sealed unsafe class ActionUseDetector : IDisposable
 {
+    private readonly ActionEffectReceiveHub _hub;
     private readonly ConcurrentQueue<uint> _pendingActionIds = new();
-    private Hook<ActionEffectHandler.Delegates.Receive>? _receiveHook;
 
     public event Action<uint, uint>? ActionUsed;
 
+    public ActionUseDetector(ActionEffectReceiveHub hub)
+    {
+        _hub = hub;
+    }
+
     public void Subscribe()
     {
-        if (_receiveHook != null)
-            return;
-
-        try
-        {
-            // Hook ActionEffect Receive so only server-confirmed casts count (not queue spam).
-            var address = ActionEffectHandler.Addresses.Receive.Value;
-            if (address == nint.Zero)
-            {
-                PluginServices.Log.Error("ActionEffect Receive address not found; action detect disabled");
-                return;
-            }
-
-            _receiveHook = PluginServices.GameInterop.HookFromAddress<ActionEffectHandler.Delegates.Receive>(
-                address,
-                ReceiveDetour);
-            _receiveHook.Enable();
-            PluginServices.Log.Information("ActionEffect Receive hook enabled for confirmed action use");
-        }
-        catch (Exception ex)
-        {
-            PluginServices.Log.Error(ex, "Failed to enable ActionEffect Receive hook");
-        }
+        _hub.Received -= OnReceived;
+        _hub.Received += OnReceived;
     }
 
     public void Dispose()
     {
-        _receiveHook?.Disable();
-        _receiveHook?.Dispose();
-        _receiveHook = null;
+        _hub.Received -= OnReceived;
         Reset();
     }
 
@@ -63,59 +43,49 @@ internal sealed unsafe class ActionUseDetector : IDisposable
 
     public bool TryDequeue(out uint actionId) => _pendingActionIds.TryDequeue(out actionId);
 
-    private void ReceiveDetour(
+    private void OnReceived(
         uint casterEntityId,
         Character* casterPtr,
-        Vector3* targetPos,
         ActionEffectHandler.Header* header,
         ActionEffectHandler.TargetEffects* effects,
         GameObjectId* targetEntityIds)
     {
-        _receiveHook!.Original(casterEntityId, casterPtr, targetPos, header, effects, targetEntityIds);
+        if (header == null)
+            return;
 
-        try
+        var local = PluginServices.ObjectTable.LocalPlayer;
+        if (local == null || local.EntityId != casterEntityId)
+            return;
+
+        // Skip server-driven effects (autos / non-client casts). Hotbar uses have SourceSequence != 0.
+        if (header->SourceSequence == 0)
+            return;
+
+        // Header.ActionType is a byte; ActionType enum is uint-backed.
+        var actionType = (ActionType)header->ActionType;
+        if (actionType is not (ActionType.Action or ActionType.GeneralAction))
+            return;
+
+        var actionId = header->ActionId;
+        if (actionId == 0)
+            return;
+
+        // Prefer adjusted id so combo/stance variants match timeline cues.
+        var recordId = actionId;
+        var am = ActionManager.Instance();
+        if (am != null)
         {
-            if (header == null)
-                return;
-
-            var local = PluginServices.ObjectTable.LocalPlayer;
-            if (local == null || local.EntityId != casterEntityId)
-                return;
-
-            // Skip server-driven effects (autos / non-client casts). Hotbar uses have SourceSequence != 0.
-            if (header->SourceSequence == 0)
-                return;
-
-            // Header.ActionType is a byte; ActionType enum is uint-backed.
-            var actionType = (ActionType)header->ActionType;
-            if (actionType is not (ActionType.Action or ActionType.GeneralAction))
-                return;
-
-            var actionId = header->ActionId;
-            if (actionId == 0)
-                return;
-
-            // Prefer adjusted id so combo/stance variants match timeline cues.
-            var recordId = actionId;
-            var am = ActionManager.Instance();
-            if (am != null)
-            {
-                var adjusted = am->GetAdjustedActionId(actionId);
-                if (adjusted != 0)
-                    recordId = adjusted;
-            }
-
-            EnqueueActionId(actionId);
-            if (recordId != actionId)
-                EnqueueActionId(recordId);
-
-            var targetJobId = ResolveOtherPlayerTargetJobId(casterEntityId, header, targetEntityIds);
-            ActionUsed?.Invoke(recordId, targetJobId);
+            var adjusted = am->GetAdjustedActionId(actionId);
+            if (adjusted != 0)
+                recordId = adjusted;
         }
-        catch (Exception ex)
-        {
-            PluginServices.Log.Error(ex, "ActionEffect Receive detour failed");
-        }
+
+        EnqueueActionId(actionId);
+        if (recordId != actionId)
+            EnqueueActionId(recordId);
+
+        var targetJobId = ResolveOtherPlayerTargetJobId(casterEntityId, header, targetEntityIds);
+        ActionUsed?.Invoke(recordId, targetJobId);
     }
 
     private static uint ResolveOtherPlayerTargetJobId(

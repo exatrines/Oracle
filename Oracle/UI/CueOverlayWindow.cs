@@ -1,4 +1,3 @@
-using Oracle.Models;
 using Oracle.Services;
 
 namespace Oracle.UI;
@@ -57,7 +56,9 @@ internal sealed class CueOverlayWindow : Window
 
     private IReadOnlyList<UpcomingCue> GetUpcomingForOverlay()
     {
-        var upcoming = _engine.GetUpcoming(C.LookaheadSeconds);
+        var upcoming = _engine.GetUpcoming(C.LookaheadSeconds)
+            .Where(u => OverlayView.IsAction(u.Cue))
+            .ToList();
         var maxRows = Math.Clamp(C.OverlayMaxRows, 1, 50);
         if (upcoming.Count <= maxRows)
             return upcoming;
@@ -66,22 +67,11 @@ internal sealed class CueOverlayWindow : Window
 
     private Vector2 DrawOverlayHeader(Vector2 contentStart, out float rowsTop)
     {
-        var headerText = BuildOverlayHeaderText();
+        var headerText = OverlayView.HeaderText(_engine);
         var headerSize = ImGui.CalcTextSize(headerText);
         ImGui.GetWindowDrawList().AddText(contentStart, ImGui.GetColorU32(ImGuiCol.Text), headerText);
         rowsTop = contentStart.Y + headerSize.Y + ImGui.GetStyle().ItemSpacing.Y;
         return headerSize;
-    }
-
-    private string BuildOverlayHeaderText()
-    {
-        var header = _engine.IsPreview
-            ? I18n.Get("overlay.preview")
-            : _engine.ActiveDocument?.Name ?? I18n.Get("overlay.fallback_timeline");
-        var clock = _engine.IsRunning
-            ? I18n.Format("overlay.seconds", _engine.ElapsedSeconds)
-            : I18n.Get("overlay.stopped");
-        return $"{header}  {clock}";
     }
 
     private static void DrawOverlayDragHandle(Vector2 contentStart, Vector2 headerSize, float rowsBottom)
@@ -105,22 +95,17 @@ internal sealed class CueOverlayWindow : Window
     {
         var drawList = ImGui.GetWindowDrawList();
         var y = origin.Y;
-        var blinkPhaseOn = (DateTime.UtcNow.Millisecond / 250) % 2 == 0;
+        var blinkPhaseOn = OverlayView.BlinkPhaseOn;
 
         foreach (var item in upcoming)
         {
-            var label = ActionLookup.GetOverlayLabel(item.Cue);
-
-            var remain = item.RemainingSeconds;
-            var highlighting = item.IsHighlighting;
-            var isPost = item.IsPostHighlight;
-            var lineColorVec = isPost ? C.ActionHighlightAfterLineColor : C.ActionHighlightBeforeLineColor;
-            var lineThickness = Math.Max(
-                1f,
-                isPost ? C.ActionHighlightAfterLineThickness : C.ActionHighlightBeforeLineThickness);
-            var blink = isPost ? C.ActionHighlightAfterBlink : C.ActionHighlightBeforeBlink;
-            var showLine = highlighting && (!blink || blinkPhaseOn);
-            var color = highlighting
+            var label = ActionLookup.GetName(item.Cue.ActionId);
+            var showLine = OverlayView.TryHighlightLine(
+                item,
+                blinkPhaseOn,
+                out var lineColorVec,
+                out var lineThickness);
+            var color = item.IsHighlighting
                 ? lineColorVec
                 : new Vector4(0.92f, 0.92f, 0.92f, 1f);
             var lineColor = ImGui.ColorConvertFloat4ToU32(lineColorVec);
@@ -142,40 +127,37 @@ internal sealed class CueOverlayWindow : Window
             }
 
             var textX = origin.X + 8f;
-            if (item.Cue.Kind == TimelineCueKind.Action)
+            var icon = ActionLookup.GetIconWrap(item.Cue.ActionId);
+            if (icon != null)
             {
-                var icon = ActionLookup.GetIconWrap(item.Cue.ActionId);
-                if (icon != null)
+                var iconSize = 24f;
+                var iconPos = new Vector2(origin.X + 4f, y + 3f);
+                drawList.AddImage(icon.Handle, iconPos, iconPos + new Vector2(iconSize, iconSize));
+
+                if (showLine)
                 {
-                    var iconSize = 24f;
-                    var iconPos = new Vector2(origin.X + 4f, y + 3f);
-                    drawList.AddImage(icon.Handle, iconPos, iconPos + new Vector2(iconSize, iconSize));
-
-                    if (showLine)
-                    {
-                        drawList.AddRect(
-                            iconPos,
-                            iconPos + new Vector2(iconSize, iconSize),
-                            lineColor,
-                            2f,
-                            ImDrawFlags.None,
-                            Math.Max(1f, lineThickness * 0.85f));
-                    }
-
-                    textX = origin.X + 34f;
+                    drawList.AddRect(
+                        iconPos,
+                        iconPos + new Vector2(iconSize, iconSize),
+                        lineColor,
+                        2f,
+                        ImDrawFlags.None,
+                        Math.Max(1f, lineThickness * 0.85f));
                 }
 
-                var targetIcon = CueTargetCatalog.GetIconWrap(item.Cue);
-                if (targetIcon != null)
-                {
-                    var targetSize = 20f;
-                    var targetPos = new Vector2(textX, y + 5f);
-                    drawList.AddImage(
-                        targetIcon.Handle,
-                        targetPos,
-                        targetPos + new Vector2(targetSize, targetSize));
-                    textX += targetSize + 4f;
-                }
+                textX = origin.X + 34f;
+            }
+
+            var targetIcon = CueTargetCatalog.GetIconWrap(item.Cue);
+            if (targetIcon != null)
+            {
+                var targetSize = 20f;
+                var targetPos = new Vector2(textX, y + 5f);
+                drawList.AddImage(
+                    targetIcon.Handle,
+                    targetPos,
+                    targetPos + new Vector2(targetSize, targetSize));
+                textX += targetSize + 4f;
             }
 
             var text = item.IsPostHighlight
@@ -184,7 +166,7 @@ internal sealed class CueOverlayWindow : Window
                     I18n.Get("overlay.now"),
                     label,
                     item.HighlightRemainingSec)
-                : I18n.Format("overlay.cue_row", remain, label);
+                : I18n.Format("overlay.cue_row", item.RemainingSeconds, label);
             drawList.AddText(
                 new Vector2(textX, y + 6f),
                 ImGui.ColorConvertFloat4ToU32(color),

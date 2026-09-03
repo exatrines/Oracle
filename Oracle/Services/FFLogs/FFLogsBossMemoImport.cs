@@ -7,40 +7,20 @@ namespace Oracle.Services.FFLogs;
 /// </summary>
 internal static class FFLogsBossMemoImport
 {
-    private const double ClusterGapMs = 1000.0;
-
     public static List<TimelineCue> BuildMemos(
         FFLogsFightInfo fight,
         IReadOnlyList<FFLogsDamageHit> hits)
     {
-        var memos = new List<TimelineCue>();
+        var points = hits
+            .Where(IsUsableEnemyHit)
+            .Select(hit => (
+                Time: hit.Timestamp,
+                ActionId: hit.AbilityGameId,
+                Label: ResolveLabel(hit)));
 
-        foreach (var group in hits.Where(IsUsableEnemyHit).GroupBy(h => h.AbilityGameId))
-        {
-            double? clusterStart = null;
-            var clusterLast = 0.0;
-            var clusterName = string.Empty;
-
-            foreach (var hit in group.OrderBy(h => h.Timestamp))
-            {
-                var label = ResolveLabel(hit);
-                if (clusterStart is null || hit.Timestamp - clusterLast > ClusterGapMs)
-                {
-                    if (clusterStart is double start)
-                        memos.Add(ToMemo(fight, start, clusterName));
-
-                    clusterStart = hit.Timestamp;
-                    clusterName = label;
-                }
-
-                clusterLast = hit.Timestamp;
-            }
-
-            if (clusterStart is double remaining)
-                memos.Add(ToMemo(fight, remaining, clusterName));
-        }
-
-        return memos;
+        return HitMemoCluster.Cluster(points, HitMemoCluster.GapSec * 1000.0)
+            .Select(c => ToMemo(fight, c.Time, c.Label))
+            .ToList();
     }
 
     private static bool IsUsableEnemyHit(FFLogsDamageHit hit)
@@ -58,17 +38,13 @@ internal static class FFLogsBossMemoImport
         if (hit.TargetIsFriendly == false)
             return false;
 
-        return !IsAutoAttack(hit.AbilityName);
+        return !EnemyHitRules.IsAutoAttackName(hit.AbilityName);
     }
 
     private static string ResolveLabel(FFLogsDamageHit hit) =>
-        FFLogsDamageHit.IsUnusableName(hit.AbilityName)
+        ActionLookup.IsPlaceholderName(hit.AbilityName)
             ? $"#{hit.AbilityGameId}"
             : hit.AbilityName.Trim();
-
-    private static bool IsAutoAttack(string name) =>
-        name.Equals("Attack", StringComparison.OrdinalIgnoreCase)
-        || name.Equals("攻撃", StringComparison.Ordinal);
 
     private static TimelineCue ToMemo(FFLogsFightInfo fight, double timestampMs, string label) =>
         new()

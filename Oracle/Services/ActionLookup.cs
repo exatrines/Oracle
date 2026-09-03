@@ -2,6 +2,7 @@ using Dalamud.Interface.Textures;
 using Dalamud.Interface.Textures.TextureWraps;
 using Oracle.Models;
 using LuminaAction = Lumina.Excel.Sheets.Action;
+using LuminaStatus = Lumina.Excel.Sheets.Status;
 
 namespace Oracle.Services;
 
@@ -31,6 +32,37 @@ internal static class ActionLookup
         }
 
         return $"#{actionId}";
+    }
+
+    public static bool IsPlaceholderName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return true;
+
+        var trimmed = name.Trim();
+        return trimmed.StartsWith('#')
+            || trimmed.StartsWith("_rsv_", StringComparison.OrdinalIgnoreCase)
+            || trimmed.StartsWith("unknown_", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static string GetStatusName(uint statusId)
+    {
+        if (statusId == 0)
+            return I18n.Get("config.match.none");
+
+        try
+        {
+            var row = PluginServices.DataManager.GetExcelSheet<LuminaStatus>()?.GetRowOrDefault(statusId);
+            var name = row?.Name.ToString();
+            if (!string.IsNullOrWhiteSpace(name))
+                return name;
+        }
+        catch
+        {
+            // ignored
+        }
+
+        return $"#{statusId}";
     }
 
     public static uint GetIconId(uint actionId)
@@ -68,64 +100,14 @@ internal static class ActionLookup
     }
 
     /// <summary>
-    /// Major two-lane layout: Ability / Role / Memo ↁEupper; Spell / Weaponskill ↁElower.
+    /// Major two-lane layout: Ability / Role on the upper lane; Spell / Weaponskill on the lower.
     /// </summary>
-    public static bool IsMajorAbilityLane(TimelineCue cue)
-    {
-        if (cue.Kind is TimelineCueKind.Memo or TimelineCueKind.SceneTransition)
-            return true;
-
-        if (cue.ActionId == 0)
-            return true;
-
-        return !IsGcdSkill(cue.ActionId);
-    }
-
-    public static string GetOverlayLabel(TimelineCue cue)
-    {
-        return cue.Kind switch
-        {
-            TimelineCueKind.Memo => string.IsNullOrWhiteSpace(cue.Label)
-                ? I18n.Get("overlay.memo_fallback")
-                : cue.Label,
-            TimelineCueKind.SceneTransition => I18n.Format(
-                "overlay.scene_transition",
-                cue.SceneBefore,
-                cue.SceneAfter),
-            _ => GetName(cue.ActionId),
-        };
-    }
-
-    public static string GetMajorAbbrev(TimelineCue cue)
-    {
-        if (cue.Kind == TimelineCueKind.SceneTransition)
-        {
-            var text = $"{cue.SceneBefore}->{cue.SceneAfter}";
-            return text.Length > 4 ? text[..4] : text;
-        }
-
-        if (cue.Kind == TimelineCueKind.Memo)
-        {
-            var memo = string.IsNullOrWhiteSpace(cue.Label)
-                ? I18n.Get("overlay.memo_abbrev")
-                : cue.Label;
-            return memo.Length > 4 ? memo[..4] : memo;
-        }
-
-        return string.Empty;
-    }
+    public static bool IsMajorAbilityLane(TimelineCue cue) =>
+        cue.ActionId == 0 || !IsGcdSkill(cue.ActionId);
 
     /// <summary>
     /// Weaponskill / Spell (global cooldown). Abilities and role abilities are excluded.
     /// </summary>
-    public static bool IsGcdSkill(TimelineCue cue)
-    {
-        if (cue.Kind != TimelineCueKind.Action || cue.ActionId == 0)
-            return false;
-
-        return IsGcdSkill(cue.ActionId);
-    }
-
     public static bool IsGcdSkill(uint actionId)
     {
         if (actionId == 0)
@@ -144,14 +126,6 @@ internal static class ActionLookup
         {
             return false;
         }
-    }
-
-    public static bool IsSpell(TimelineCue cue)
-    {
-        if (cue.Kind != TimelineCueKind.Action || cue.ActionId == 0)
-            return false;
-
-        return IsSpell(cue.ActionId);
     }
 
     public static bool IsSpell(uint actionId)

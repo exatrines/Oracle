@@ -181,6 +181,63 @@ internal sealed class FFLogsClient : IDisposable
         return all;
     }
 
+    public async Task<IReadOnlyList<FFLogsCastEvent>> GetEnemyCastsAsync(
+        string code,
+        int fightId,
+        double fightStartTime,
+        double fightEndTime,
+        string clientId,
+        string clientSecret,
+        CancellationToken ct = default)
+    {
+        await EnsureTokenAsync(clientId, clientSecret, ct).ConfigureAwait(false);
+
+        const string query = """
+            query(
+              $code: String!
+              $fightIDs: [Int]!
+              $startTime: Float
+              $endTime: Float
+            ) {
+              reportData {
+                report(code: $code) {
+                  events(
+                    dataType: Casts
+                    fightIDs: $fightIDs
+                    hostilityType: Enemies
+                    startTime: $startTime
+                    endTime: $endTime
+                    limit: 10000
+                  ) {
+                    nextPageTimestamp
+                    data
+                  }
+                }
+              }
+            }
+            """;
+
+        var all = new List<FFLogsCastEvent>();
+        await FetchEventPagesAsync(
+            query,
+            start => new
+            {
+                code,
+                fightIDs = new[] { fightId },
+                startTime = start,
+                endTime = fightEndTime,
+            },
+            "fflogs.err.casts_failed",
+            data =>
+            {
+                foreach (var cast in ParseCastEvents(data, includeBeginCast: true))
+                    all.Add(cast);
+            },
+            fightStartTime,
+            ct).ConfigureAwait(false);
+        return all;
+    }
+
     public async Task<IReadOnlyList<FFLogsDamageHit>> GetDamageTakenAsync(
         string code,
         int fightId,
@@ -251,6 +308,76 @@ internal sealed class FFLogsClient : IDisposable
         return hits;
     }
 
+    public async Task<IReadOnlyList<FFLogsStatusEvent>> GetStatusEventsAsync(
+        string code,
+        int fightId,
+        double fightStartTime,
+        double fightEndTime,
+        IReadOnlyList<uint> statusGameIds,
+        string clientId,
+        string clientSecret,
+        CancellationToken ct = default)
+    {
+        if (statusGameIds.Count == 0)
+            return [];
+
+        await EnsureTokenAsync(clientId, clientSecret, ct).ConfigureAwait(false);
+
+        const string query = """
+            query(
+              $code: String!
+              $fightIDs: [Int]!
+              $startTime: Float
+              $endTime: Float
+              $dataType: EventDataType!
+              $filter: String
+            ) {
+              reportData {
+                report(code: $code) {
+                  events(
+                    dataType: $dataType
+                    fightIDs: $fightIDs
+                    startTime: $startTime
+                    endTime: $endTime
+                    filterExpression: $filter
+                    limit: 10000
+                  ) {
+                    nextPageTimestamp
+                    data
+                  }
+                }
+              }
+            }
+            """;
+
+        var filter = BuildStatusAbilityFilter(statusGameIds);
+        var all = new List<FFLogsStatusEvent>();
+        foreach (var dataType in new[] { "Buffs", "Debuffs" })
+        {
+            await FetchEventPagesAsync(
+                query,
+                start => new
+                {
+                    code,
+                    fightIDs = new[] { fightId },
+                    startTime = start,
+                    endTime = fightEndTime,
+                    dataType,
+                    filter,
+                },
+                "fflogs.err.buffs_failed",
+                data =>
+                {
+                    foreach (var ev in ParseStatusEvents(data))
+                        all.Add(ev);
+                },
+                fightStartTime,
+                ct).ConfigureAwait(false);
+        }
+
+        return all;
+    }
+
     private async Task FetchEventPagesAsync(
         string query,
         Func<double?, object> variables,
@@ -302,7 +429,7 @@ internal sealed class FFLogsClient : IDisposable
                 continue;
 
             var name = node["name"]?.GetValue<string>()?.Trim() ?? string.Empty;
-            if (FFLogsDamageHit.IsUnusableName(name))
+            if (ActionLookup.IsPlaceholderName(name))
                 continue;
 
             names[gameId] = name;
@@ -311,7 +438,9 @@ internal sealed class FFLogsClient : IDisposable
         return names;
     }
 
-    private static IEnumerable<FFLogsCastEvent> ParseCastEvents(JsonNode? dataNode)
+    private static IEnumerable<FFLogsCastEvent> ParseCastEvents(
+        JsonNode? dataNode,
+        bool includeBeginCast = false)
     {
         var array = ReadEventArray(dataNode);
         if (array == null)
@@ -321,7 +450,9 @@ internal sealed class FFLogsClient : IDisposable
         {
             var type = node["type"]?.GetValue<string>() ?? string.Empty;
             if (!string.IsNullOrEmpty(type)
-                && !string.Equals(type, "cast", StringComparison.OrdinalIgnoreCase))
+                && !string.Equals(type, "cast", StringComparison.OrdinalIgnoreCase)
+                && !(includeBeginCast
+                    && string.Equals(type, "begincast", StringComparison.OrdinalIgnoreCase)))
                 continue;
 
             var ability = ReadUInt(node, "abilityGameID", "abilityGameId");
@@ -333,6 +464,35 @@ internal sealed class FFLogsClient : IDisposable
                 Timestamp = node["timestamp"]?.GetValue<double>() ?? 0,
                 AbilityGameId = ability,
                 TargetId = ReadTargetId(node),
+                Type = type,
+            };
+        }
+    }
+
+    private static IEnumerable<FFLogsStatusEvent> ParseStatusEvents(JsonNode? dataNode)
+    {
+        var array = ReadEventArray(dataNode);
+        if (array == null)
+            yield break;
+
+        foreach (var node in array.OfType<JsonObject>())
+        {
+            var type = node["type"]?.GetValue<string>() ?? string.Empty;
+            if (!TryParseStatusEdge(type, out var removed))
+                continue;
+
+            var ability = ReadAbilityGameId(node);
+            var statusId = ToGameStatusId(ability);
+            if (statusId == 0)
+                continue;
+
+            yield return new FFLogsStatusEvent
+            {
+                Timestamp = node["timestamp"]?.GetValue<double>() ?? 0,
+                StatusId = statusId,
+                Removed = removed,
+                Type = type,
+                SourceIsFriendly = ReadBool(node, "sourceIsFriendly"),
             };
         }
     }
@@ -383,29 +543,40 @@ internal sealed class FFLogsClient : IDisposable
         {
             var hit = hits[i];
             if (abilityNames.TryGetValue(hit.AbilityGameId, out var mapped)
-                && !FFLogsDamageHit.IsUnusableName(mapped))
+                && !ActionLookup.IsPlaceholderName(mapped))
                 hits[i] = hit with { AbilityName = mapped };
         }
     }
 
-    private static int ReadTargetId(JsonObject node)
-    {
-        var raw = node["targetID"] ?? node["targetId"];
-        if (raw == null || raw.GetValueKind() == JsonValueKind.Null)
-            return 0;
+    private static int ReadTargetId(JsonObject node) =>
+        ReadInt(node, "targetID", "targetId");
 
-        try
+    private static int ReadInt(JsonObject node, params string[] names)
+    {
+        foreach (var name in names)
         {
-            return raw.GetValue<int>();
+            var raw = node[name];
+            if (raw == null || raw.GetValueKind() == JsonValueKind.Null)
+                continue;
+
+            try
+            {
+                return raw.GetValueKind() switch
+                {
+                    JsonValueKind.Number => (int)raw.GetValue<double>(),
+                    JsonValueKind.String when int.TryParse(raw.GetValue<string>(), out var parsed) => parsed,
+                    _ => raw.GetValue<int>(),
+                };
+            }
+            catch (InvalidOperationException)
+            {
+            }
+            catch (FormatException)
+            {
+            }
         }
-        catch (InvalidOperationException)
-        {
-            return 0;
-        }
-        catch (FormatException)
-        {
-            return 0;
-        }
+
+        return 0;
     }
 
     private static bool? ReadBool(JsonObject node, string name)
@@ -510,6 +681,58 @@ internal sealed class FFLogsClient : IDisposable
 
     private static uint ReadUInt(JsonObject node, string name, string alt) =>
         node[name]?.GetValue<uint>() ?? node[alt]?.GetValue<uint>() ?? 0u;
+
+    private static uint ReadAbilityGameId(JsonObject node)
+    {
+        var id = ReadUInt(node, "abilityGameID", "abilityGameId");
+        if (id != 0)
+            return id;
+
+        if (node["ability"] is not JsonObject ability)
+            return 0;
+
+        id = ReadUInt(ability, "guid", "id");
+        if (id != 0)
+            return id;
+
+        return ReadUInt(ability, "gameID", "gameId");
+    }
+
+    private static uint ToGameStatusId(uint abilityId) =>
+        abilityId >= 1_000_000 ? abilityId - 1_000_000 : abilityId;
+
+    private static uint ToFflogsStatusAbilityId(uint statusId) =>
+        statusId >= 1_000_000 ? statusId : statusId + 1_000_000;
+
+    private static string BuildStatusAbilityFilter(IReadOnlyList<uint> statusGameIds)
+    {
+        var ids = statusGameIds
+            .Where(id => id != 0)
+            .Select(ToFflogsStatusAbilityId)
+            .Distinct()
+            .ToList();
+        if (ids.Count == 1)
+            return $"ability.id = {ids[0]}";
+        return $"ability.id in ({string.Join(", ", ids)})";
+    }
+
+    private static bool TryParseStatusEdge(string type, out bool removed)
+    {
+        removed = false;
+        if (string.IsNullOrWhiteSpace(type))
+            return false;
+
+        if (type.Contains("remove", StringComparison.OrdinalIgnoreCase))
+        {
+            removed = true;
+            return true;
+        }
+
+        if (type.Contains("refresh", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return type.Contains("apply", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static JsonArray? ReadEventArray(JsonNode? dataNode)
     {

@@ -46,7 +46,7 @@ internal static class ActionTiming
 
     /// <summary>
     /// Allagan Studies speed scaling (no haste):
-    /// ⌁E1000 ∁E⌁E30ÁESpeed−SUB)/DIV⌁E ÁEbase⌁E/ 1000
+    /// Floor((1000 - Floor(130 * (Speed - SUB) / DIV)) * base) / 1000
     /// </summary>
     public static float ScaleBySpeed(float baseSeconds, int speed, int level)
     {

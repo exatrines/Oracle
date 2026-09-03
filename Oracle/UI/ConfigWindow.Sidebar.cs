@@ -4,7 +4,7 @@ using Oracle.Services;
 
 namespace Oracle.UI;
 
-// --- Sidebar: build tree ↁEselection/reorder ↁEtimeline CRUD ---
+// --- Sidebar: build tree → selection/reorder → timeline CRUD ---
 
 internal sealed partial class ConfigWindow
 {

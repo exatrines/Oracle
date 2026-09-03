@@ -7,7 +7,7 @@ namespace Oracle.UI;
 
 /// <summary>
 /// Auto Record status window (standard ImGui title bar: drag / collapse / close).
-/// Draw order: sync layout state ↁEstatus rows ↁEhorizontal major action strip.
+/// Draw order: sync layout state, status rows, then the horizontal major action strip.
 /// </summary>
 internal sealed class AutoRecordOverlayWindow : Window
 {
@@ -70,7 +70,7 @@ internal sealed class AutoRecordOverlayWindow : Window
         WindowName = I18n.Get("window.autorecord_overlay.title") + "##oracleAutoRecordOverlay";
 
         var panelW = PanelWidth;
-        // Appearing only  EAlways would cancel title-bar dragging.
+        // Appearing only; Always would cancel title-bar dragging.
         ImGui.SetNextWindowPos(
             new Vector2(C.AutoRecordOverlayPosX, C.AutoRecordOverlayPosY),
             ImGuiCond.Appearing);
@@ -308,7 +308,7 @@ internal sealed class AutoRecordOverlayWindow : Window
         var list = new List<StripItem>(cues.Count);
         foreach (var cue in cues)
         {
-            if (cue.Kind != TimelineCueKind.Action || cue.ActionId == 0)
+            if (!OverlayView.IsAction(cue) || cue.ActionId == 0)
                 continue;
 
             // Cast time relative to now: 0 at cast, then moves left (negative / past).

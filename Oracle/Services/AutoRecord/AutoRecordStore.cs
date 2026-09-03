@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Oracle.Models;
 
 namespace Oracle.Services.AutoRecord;
@@ -7,13 +5,6 @@ namespace Oracle.Services.AutoRecord;
 /// <summary>Persists combat recordings under ConfigDirectory/AutoRecord (not shown in timeline list).</summary>
 internal sealed class AutoRecordStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNameCaseInsensitive = true,
-        Converters = { new JsonStringEnumConverter() },
-    };
-
     private readonly string _directory;
 
     public AutoRecordStore(IDalamudPluginInterface pluginInterface)
@@ -40,11 +31,9 @@ internal sealed class AutoRecordStore
             if (!File.Exists(path))
                 return null;
 
-            var doc = JsonSerializer.Deserialize<TimelineDocument>(File.ReadAllText(path), JsonOptions);
-            if (doc == null)
-                return null;
-
-            doc.Id = Path.GetFileNameWithoutExtension(path);
+            var doc = TimelineJson.TryLoadFile(path, out var dropped);
+            if (dropped > 0)
+                PluginServices.Log.Information("Ignored {Count} retired cue(s) in {Path}", dropped, path);
             return doc;
         }
         catch (Exception ex)
@@ -67,11 +56,11 @@ internal sealed class AutoRecordStore
         document.Id = stem;
         foreach (var cue in document.Cues)
         {
-            if (cue.Kind == TimelineCueKind.Action)
+            if (cue.Kind is TimelineCueKind.Action or TimelineCueKind.Sync)
                 cue.Label = string.Empty;
         }
 
-        File.WriteAllText(path, JsonSerializer.Serialize(document, JsonOptions));
+        File.WriteAllText(path, TimelineJson.SerializeDocument(document));
         Prune(maxFiles);
         return path;
     }

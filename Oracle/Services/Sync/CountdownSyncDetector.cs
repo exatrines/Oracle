@@ -4,7 +4,7 @@ using Dalamud.Game.Text;
 
 namespace Oracle.Services;
 
-/// <summary>Party/duty countdown from system chat (plus manual inject).</summary>
+/// <summary>Party/duty countdown from system chat.</summary>
 internal sealed class CountdownSyncDetector : IDisposable
 {
     private static readonly Regex[] ChatPatterns =
@@ -14,8 +14,6 @@ internal sealed class CountdownSyncDetector : IDisposable
         new(@"Commencing in\s+(\d+)\s+seconds?", RegexOptions.IgnoreCase | RegexOptions.Compiled),
     ];
 
-    private bool _pendingInject;
-    private float _pendingInjectRemaining;
     private bool _pendingChat;
     private float _pendingChatRemaining;
 
@@ -26,41 +24,14 @@ internal sealed class CountdownSyncDetector : IDisposable
 
     public void Dispose() => PluginServices.ChatGui.ChatMessage -= OnChatMessage;
 
-    public void Inject(float remainingSeconds)
-    {
-        _pendingInject = true;
-        _pendingInjectRemaining = Math.Max(0.1f, remainingSeconds);
-    }
-
     public void Update()
     {
         JustStarted = false;
-
-        // Manual InjectCountdown takes priority over chat this frame.
-        if (_pendingInject)
-        {
-            _pendingInject = false;
-            FireStart(_pendingInjectRemaining);
-            return;
-        }
-
         if (!_pendingChat)
             return;
 
         _pendingChat = false;
-        FireStart(_pendingChatRemaining);
-    }
-
-    public void Reset()
-    {
-        JustStarted = false;
-        _pendingInject = false;
-        _pendingChat = false;
-    }
-
-    private void FireStart(float remaining)
-    {
-        StartedRemaining = Math.Max(0.1f, remaining);
+        StartedRemaining = Math.Max(0.1f, _pendingChatRemaining);
         JustStarted = true;
     }
 

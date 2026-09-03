@@ -85,7 +85,11 @@ public sealed class Configuration : IPluginConfiguration
     [JsonProperty("FflogsImportActionIdsByJob")]
     public Dictionary<uint, List<uint>> FFLogsImportActionIdsByJob { get; set; } = new();
 
+    /// <summary>Per-territory sync preset override. Missing key = built-in (or empty).</summary>
+    public Dictionary<uint, List<SyncPresetEntry>> SyncPresetsByTerritory { get; set; } = new();
+
     // --- Auto Record ---
+    // TODO: option to record only Content Sync Preset ids.
 
     public bool AutoRecordEnabled { get; set; }
     public bool AutoRecordManualSave { get; set; }
@@ -97,6 +101,16 @@ public sealed class Configuration : IPluginConfiguration
     public bool AutoRecordOverlayAutoOpenOnEffectiveZone { get; set; }
     public bool AutoRecordOverlayCollapsed { get; set; }
     public List<uint>? AutoRecordZoneWhitelist { get; set; }
+
+    // --- Plugin log ---
+
+    public bool PluginLogEnabled { get; set; }
+    public bool PluginLogActionEffect { get; set; }
+    public bool PluginLogCasts { get; set; } = true;
+    public bool PluginLogStatus { get; set; }
+    public bool PluginLogCountdown { get; set; } = true;
+    public bool PluginLogCombat { get; set; } = true;
+    public bool PluginLogScene { get; set; }
 
     [NonSerialized]
     private IDalamudPluginInterface? _pluginInterface;
@@ -232,6 +246,52 @@ public sealed class Configuration : IPluginConfiguration
             return;
 
         if (!FFLogsImportActionIdsByJob.Remove(classJobId))
+            return;
+
+        Save();
+    }
+
+    public bool HasSyncPresetOverride(uint territoryTypeId) =>
+        territoryTypeId != 0
+        && SyncPresetsByTerritory != null
+        && SyncPresetsByTerritory.ContainsKey(territoryTypeId);
+
+    public bool TryGetSyncPresetOverride(uint territoryTypeId, out List<SyncPresetEntry> entries)
+    {
+        entries = [];
+        if (territoryTypeId == 0 || SyncPresetsByTerritory == null)
+            return false;
+
+        if (!SyncPresetsByTerritory.TryGetValue(territoryTypeId, out var list) || list == null)
+            return false;
+
+        entries = list;
+        return true;
+    }
+
+    public void SetSyncPresets(uint territoryTypeId, IEnumerable<SyncPresetEntry> entries)
+    {
+        if (territoryTypeId == 0)
+            return;
+
+        SyncPresetsByTerritory ??= new Dictionary<uint, List<SyncPresetEntry>>();
+        SyncPresetsByTerritory[territoryTypeId] = entries
+            .Select(e => new SyncPresetEntry
+            {
+                SyncType = e.SyncType,
+                ActionId = e.ActionId,
+                Effected = e.Effected,
+            })
+            .ToList();
+        Save();
+    }
+
+    public void ResetSyncPresets(uint territoryTypeId)
+    {
+        if (territoryTypeId == 0 || SyncPresetsByTerritory == null)
+            return;
+
+        if (!SyncPresetsByTerritory.Remove(territoryTypeId))
             return;
 
         Save();

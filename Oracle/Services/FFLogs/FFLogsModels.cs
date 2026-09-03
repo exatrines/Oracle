@@ -15,7 +15,7 @@ internal sealed class FFLogsFightInfo
     public string GameZoneName { get; init; } = string.Empty;
 
     internal float OffsetSec(double timestampMs) =>
-        MathF.Round((float)((timestampMs - StartTime) / 1000.0));
+        MathF.Round((float)((timestampMs - StartTime) / 1000.0), 1);
 }
 
 internal sealed class FFLogsActorInfo
@@ -31,6 +31,16 @@ internal sealed class FFLogsCastEvent
     public double Timestamp { get; init; }
     public uint AbilityGameId { get; init; }
     public int TargetId { get; init; }
+    public string Type { get; init; } = string.Empty;
+}
+
+internal sealed class FFLogsStatusEvent
+{
+    public double Timestamp { get; init; }
+    public uint StatusId { get; init; }
+    public bool Removed { get; init; }
+    public string Type { get; init; } = string.Empty;
+    public bool? SourceIsFriendly { get; init; }
 }
 
 internal sealed class FFLogsReportMeta
@@ -40,7 +50,7 @@ internal sealed class FFLogsReportMeta
     public IReadOnlyList<FFLogsActorInfo> Players { get; init; } = [];
 }
 
-/// <summary>One FFLogs DamageTaken event. Clustering lives in <see cref="FFLogsBossMemoImport"/>.</summary>
+/// <summary>One FFLogs DamageTaken event. Clustering is 1s first-hit (HitMemoCluster).</summary>
 internal sealed record FFLogsDamageHit
 {
     public double Timestamp { get; init; }
@@ -50,20 +60,4 @@ internal sealed record FFLogsDamageHit
     public bool Tick { get; init; }
     public bool? SourceIsFriendly { get; init; }
     public bool? TargetIsFriendly { get; init; }
-
-    internal static bool IsUnusableName(string? name)
-    {
-        if (string.IsNullOrWhiteSpace(name))
-            return true;
-
-        var trimmed = name.Trim();
-        if (trimmed.StartsWith('#'))
-            return true;
-        if (trimmed.StartsWith("_rsv_", StringComparison.OrdinalIgnoreCase))
-            return true;
-        if (trimmed.StartsWith("unknown_", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        return false;
-    }
 }

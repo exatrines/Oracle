@@ -51,7 +51,7 @@ internal sealed unsafe class HotbarHighlightService
         if (!PluginServices.ClientState.IsLoggedIn)
             return;
 
-        // 1. Upcoming cues ↁEaction ids currently in hotbar highlight window
+        // 1. Upcoming cues → action ids currently in hotbar highlight window
         var highlightByAction = CollectHighlightActions();
         if (highlightByAction.Count == 0)
             return;
@@ -66,7 +66,7 @@ internal sealed unsafe class HotbarHighlightService
             return;
 
         // 3. Draw rects on visible action bar addons
-        var blinkPhaseOn = (DateTime.UtcNow.Millisecond / 250) % 2 == 0;
+        var blinkPhaseOn = OverlayView.BlinkPhaseOn;
         var drawList = ImGui.GetForegroundDrawList();
 
         foreach (var addonName in NormalActionBarAddonNames)
@@ -90,7 +90,7 @@ internal sealed unsafe class HotbarHighlightService
         {
             if (!item.IsHighlighting)
                 continue;
-            if (item.Cue.Kind != TimelineCueKind.Action)
+            if (!OverlayView.IsAction(item.Cue))
                 continue;
             if (item.Cue.ActionId == 0)
                 continue;
@@ -129,7 +129,7 @@ internal sealed unsafe class HotbarHighlightService
         var matches = new Dictionary<(byte, byte), bool>();
         var actionIds = highlightByAction.Keys.ToHashSet();
 
-        // 0 E normal, 10 E7 cross
+        // 0-9 normal, 10-17 cross
         for (byte hotbarId = 0; hotbarId < 18; hotbarId++)
         {
             if (!C.IsHotbarHighlightEnabled(hotbarId))

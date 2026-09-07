@@ -23,11 +23,12 @@ https://raw.githubusercontent.com/exatrines/DalamudPlugins/refs/heads/main/plugi
 
 ## Features
 
-- **Timeline editor** — cues by time offset (actions or memos), zone / job auto-load (optional experimental scene filter), manual load commands
-- **Overlays** — list overlay (upcoming rows) and major overlay (scrolling icon lane)
+- **Timeline editor** — cues by time offset (actions, memos, or sync), zone / job auto-load (optional experimental scene filter), manual load commands
+- **Overlays** — list overlay (upcoming actions) and major overlay (scrolling icon lane); memos and sync stay in the editor
 - **Action highlight** — before / after windows with optional blink; optional hotbar highlight
-- **FFLogs import** — pull casts from a report into a new timeline (API credentials in settings)
-- **AutoRecord** — record your actions in selected duties, then import into a timeline
+- **FFLogs import** — player casts from a report, optional enemy-attack memos, and Import sync when the zone has presets (API credentials in settings)
+- **AutoRecord** — record your actions and enemy cast/status events in selected duties, then import into a timeline
+- **Content Sync Presets** — per-zone enemy casts and statuses that resync the clock; used by Import sync
 - **i18n** — English and Japanese UI strings
 
 ## Commands

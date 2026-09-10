@@ -67,6 +67,10 @@ internal sealed partial class PluginSettingsWindow
                     () => C.PluginLogCombat,
                     v => C.PluginLogCombat = v);
                 DrawPluginLogKind(
+                    "settings.checkbox.plugin_log.auto_load",
+                    () => C.PluginLogAutoLoad,
+                    v => C.PluginLogAutoLoad = v);
+                DrawPluginLogKind(
                     "settings.checkbox.plugin_log.casts",
                     () => C.PluginLogCasts,
                     v => C.PluginLogCasts = v);
@@ -78,10 +82,6 @@ internal sealed partial class PluginSettingsWindow
                     "settings.checkbox.plugin_log.action_effect",
                     () => C.PluginLogActionEffect,
                     v => C.PluginLogActionEffect = v);
-                DrawPluginLogKind(
-                    "settings.checkbox.plugin_log.scene",
-                    () => C.PluginLogScene,
-                    v => C.PluginLogScene = v);
             }
         }
     }

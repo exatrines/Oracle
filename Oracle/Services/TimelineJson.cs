@@ -92,6 +92,8 @@ internal static class TimelineJson
         }
 
         RemoveProperty(obj, "Scenes");
+        RemoveProperty(obj, "SceneId");
+        RemoveProperty(obj, "SceneFilterEnabled");
     }
 
     private static int DropRetiredCues(JsonArray? cues)

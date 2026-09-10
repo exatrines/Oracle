@@ -30,8 +30,7 @@ internal static class ImportTimelineUi
         ref string zoneLabel,
         ref string zoneSearchFilter,
         ref uint classJobId,
-        ref int sceneId,
-        ref bool sceneFilterEnabled)
+        ref string autoLoadPresetId)
     {
         MirageUi.SubHeader(I18n.Get("config.subheader.auto_load"));
         MirageUi.Checkbox(I18n.Get("config.checkbox.enable_auto_load"), ref autoLoadEnabled);
@@ -49,17 +48,13 @@ internal static class ImportTimelineUi
         if (JobCombo.Draw(I18n.Get("config.label.job"), ref jobId, id: idPrefix + "Job"))
             classJobId = jobId;
 
-        var scene = sceneId;
-        var filter = sceneFilterEnabled;
-        if (SceneFilterField.DrawLabeled(
-                I18n.Get("config.label.scene_id"),
-                idPrefix + "Scene",
-                ref filter,
-                ref scene))
-        {
-            sceneFilterEnabled = filter;
-            sceneId = Math.Max(0, scene);
-        }
+        var presetId = autoLoadPresetId ?? string.Empty;
+        if (AutoLoadPresetField.Draw(
+                I18n.Get("config.label.autoload_preset"),
+                idPrefix + "Preset",
+                territoryTypeId,
+                ref presetId))
+            autoLoadPresetId = presetId ?? string.Empty;
     }
 
     public static void DrawZoneField(

@@ -20,8 +20,7 @@ internal sealed class AutoRecordImportPanel
     private uint _territoryTypeId;
     private uint _contentFinderConditionId;
     private byte _zoneClassJobLevel;
-    private int _sceneId;
-    private bool _sceneFilterEnabled;
+    private string _autoLoadPresetId = string.Empty;
     private bool _autoLoadEnabled = true;
     private bool _importEnemyHitMemos;
     private bool _importSync;
@@ -133,8 +132,7 @@ internal sealed class AutoRecordImportPanel
             ref _zoneLabel,
             ref _zoneSearchFilter,
             ref _classJobId,
-            ref _sceneId,
-            ref _sceneFilterEnabled);
+            ref _autoLoadPresetId);
 
     private void DrawCreateButton()
     {
@@ -175,8 +173,7 @@ internal sealed class AutoRecordImportPanel
         _territoryTypeId = doc.TerritoryTypeId;
         _contentFinderConditionId = doc.ContentFinderConditionId;
         _zoneClassJobLevel = doc.ClassJobLevel;
-        _sceneId = (int)doc.SceneId;
-        _sceneFilterEnabled = doc.SceneFilterEnabled;
+        _autoLoadPresetId = doc.AutoLoadPresetId ?? string.Empty;
         _autoLoadEnabled = doc.AutoLoadEnabled;
         _zoneLabel = _territoryTypeId == 0
             ? string.Empty
@@ -273,8 +270,7 @@ internal sealed class AutoRecordImportPanel
             ContentFinderConditionId = _contentFinderConditionId,
             ClassJobLevel = _zoneClassJobLevel,
             ClassJobId = _classJobId,
-            SceneId = (uint)_sceneId,
-            SceneFilterEnabled = _sceneFilterEnabled,
+            AutoLoadPresetId = _autoLoadPresetId,
             Cues = cues,
         };
 

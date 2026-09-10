@@ -6,9 +6,7 @@
 
 Oracle is a Dalamud plugin that shows duty timeline cues—so you know which skill to use, and when.
 
-A main way to build timelines is importing casts from **FFLogs**. You can also **record your own actions** in selected duties (AutoRecord) and turn that into a timeline. Match zone and job; when countdown or combat starts, Oracle runs a clock and surfaces upcoming actions on overlays, with optional hotbar icon highlights.
-
-Scene-based Auto Load is **experimental** (still under testing).
+A main way to build timelines is importing casts from **FFLogs**. You can also **record your own actions** in selected duties (AutoRecord) and turn that into a timeline. Match zone and job, optionally an Auto Load boss preset; when countdown or combat starts, Oracle runs a clock and surfaces upcoming actions on overlays, with optional hotbar icon highlights.
 
 ## Install
 
@@ -23,12 +21,13 @@ https://raw.githubusercontent.com/exatrines/DalamudPlugins/refs/heads/main/plugi
 
 ## Features
 
-- **Timeline editor** — cues by time offset (actions, memos, or sync), zone / job auto-load (optional experimental scene filter), manual load commands
+- **Timeline editor** — cues by time offset (actions, memos, or sync), zone / job auto-load (optional boss DataID preset), manual load commands
 - **Overlays** — list overlay (upcoming actions) and major overlay (scrolling icon lane); memos and sync stay in the editor
 - **Action highlight** — before / after windows with optional blink; optional hotbar highlight
 - **FFLogs import** — player casts from a report, optional enemy-attack memos, and Import sync when the zone has presets (API credentials in settings)
 - **AutoRecord** — record your actions and enemy cast/status events in selected duties, then import into a timeline
-- **Content Sync Presets** — per-zone enemy casts and statuses that resync the clock; used by Import sync
+- **Timer Sync Presets** — per-zone enemy casts and statuses that resync the clock; used by Import sync
+- **Phase Presets** — per-zone boss DataID sets used out of combat. Empty Phase = Any (zone / job only). Built-in DSR P2 and M12S P2; stored override until Reset to default. Older scene-split files become Any; more than one Any for the same zone and job will not auto-load
 - **i18n** — English and Japanese UI strings
 
 ## Commands

@@ -67,8 +67,7 @@ internal sealed class TimelineStore
             LoadCommand = source.LoadCommand,
             TerritoryTypeId = source.TerritoryTypeId,
             ContentFinderConditionId = source.ContentFinderConditionId,
-            SceneId = source.SceneId,
-            SceneFilterEnabled = source.SceneFilterEnabled,
+            AutoLoadPresetId = source.AutoLoadPresetId,
             ClassJobId = source.ClassJobId,
             ClassJobLevel = source.ClassJobLevel,
             Cues = source.Cues.Select(c => c.CopyForDocument()).ToList(),
@@ -121,20 +120,40 @@ internal sealed class TimelineStore
         return _documents.Count(d => d.AutoLoadEnabled && SameMatchKey(d, doc)) > 1;
     }
 
+    public bool HasUnconflictedAny(uint territoryTypeId, uint classJobId)
+    {
+        if (territoryTypeId == 0 || classJobId == 0)
+            return false;
+
+        return _documents.Count(d =>
+            d.AutoLoadEnabled
+            && d.TerritoryTypeId == territoryTypeId
+            && d.ClassJobId == classJobId
+            && string.IsNullOrWhiteSpace(d.AutoLoadPresetId)) == 1;
+    }
+
     public IReadOnlyList<TimelineDocument> GetMatchConflictGroup(TimelineDocument doc) =>
         _documents.Where(d => d.AutoLoadEnabled && SameMatchKey(d, doc)).ToList();
 
     private static bool SameMatchKey(TimelineDocument a, TimelineDocument b) =>
         a.TerritoryTypeId == b.TerritoryTypeId
         && a.ClassJobId == b.ClassJobId
-        && a.SceneFilterEnabled == b.SceneFilterEnabled
-        && (!a.SceneFilterEnabled || a.SceneId == b.SceneId);
+        && string.Equals(a.AutoLoadPresetId ?? string.Empty, b.AutoLoadPresetId ?? string.Empty, StringComparison.OrdinalIgnoreCase);
 
     public void SetActive(string? id)
     {
         C.ActiveTimelineId = id ?? string.Empty;
         C.Save();
         ResolveActive(C.ActiveTimelineId);
+    }
+
+    public TimelineDocument? FindById(string? id)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+            return null;
+
+        return _documents.FirstOrDefault(d =>
+            string.Equals(d.Id, id, StringComparison.OrdinalIgnoreCase));
     }
 
     public TimelineDocument? FindByLoadToken(string token)
@@ -155,8 +174,7 @@ internal sealed class TimelineStore
         if (byName != null)
             return byName;
 
-        return _documents.FirstOrDefault(d =>
-            string.Equals(d.Id, token, StringComparison.OrdinalIgnoreCase));
+        return FindById(token);
     }
 
     public static string GetEffectiveLoadCommand(TimelineDocument doc)
@@ -388,11 +406,6 @@ internal sealed class TimelineStore
 
     private void ResolveActive(string? id)
     {
-        ActiveDocument = null;
-        if (string.IsNullOrWhiteSpace(id))
-            return;
-
-        ActiveDocument = _documents.FirstOrDefault(d =>
-            string.Equals(d.Id, id, StringComparison.OrdinalIgnoreCase));
+        ActiveDocument = FindById(id);
     }
 }

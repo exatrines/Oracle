@@ -13,8 +13,8 @@ public sealed class TimelineDocument
     public string Name { get; set; } = "Untitled";
 
     /// <summary>
-    /// When true, this timeline auto-loads when Zone / Job / Scene match
-    /// (Scene filter applies out of combat only; the clock never auto-switches docs).
+    /// When true, this timeline auto-loads when Zone / Job / Phase match
+    /// (Phase applies out of combat only; the clock never auto-switches docs).
     /// </summary>
     public bool AutoLoadEnabled { get; set; } = true;
 
@@ -24,7 +24,7 @@ public sealed class TimelineDocument
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public string LoadCommand { get; set; } = string.Empty;
 
-    // Auto-load match keys (zone + job required; scene optional)
+    // Auto-load match keys (zone + job required; preset optional)
     /// <summary>0 = not set (zone required).</summary>
     public uint TerritoryTypeId { get; set; }
 
@@ -34,13 +34,10 @@ public sealed class TimelineDocument
     public uint ContentFinderConditionId { get; set; }
 
     /// <summary>
-    /// When false, Auto Load ignores scene (any). When true, requires <see cref="SceneId"/>
-    /// (0 is a valid scene id).
+    /// Phase preset id for this zone. Empty = any bosses (zone / job only).
     /// </summary>
-    public bool SceneFilterEnabled { get; set; }
-
-    /// <summary>EnvManager scene (Splatoon-compatible). Used only when <see cref="SceneFilterEnabled"/>.</summary>
-    public uint SceneId { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public string AutoLoadPresetId { get; set; } = string.Empty;
 
     /// <summary>ClassJob row id. 0 = not set (job required).</summary>
     public uint ClassJobId { get; set; }
@@ -155,6 +152,24 @@ public sealed class SyncPresetEntry
     public EnemySyncType SyncType { get; set; }
     public uint ActionId { get; set; }
     public bool Effected { get; set; }
+}
+
+/// <summary>Named Cast/Status sync list bound to one zone.</summary>
+public sealed class SyncPreset
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public uint TerritoryTypeId { get; set; }
+    public List<SyncPresetEntry> Entries { get; set; } = [];
+}
+
+/// <summary>Named boss DataID set for Auto Load, bound to one zone.</summary>
+public sealed class AutoLoadPresetEntry
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public uint TerritoryTypeId { get; set; }
+    public List<uint> DataIds { get; set; } = [];
 }
 
 public enum CueTargetKind

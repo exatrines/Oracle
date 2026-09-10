@@ -16,6 +16,7 @@ internal sealed partial class PluginSettingsWindow : Window
     private const string SettingsFFLogsApi = "settings:fflogs-api";
     private const string SettingsImportAction = "settings:import-action";
     private const string SettingsSyncPresets = "settings:sync-presets";
+    private const string SettingsAutoLoadPresets = "settings:autoload-presets";
     private const string SettingsAutoRecordFolder = "settings:auto-record";
     private const string SettingsAutoRecord = "settings:auto-record-page";
     private const string AutoRecordZoneFilterEnabled = "enabled";
@@ -25,12 +26,6 @@ internal sealed partial class PluginSettingsWindow : Window
     private string _selectedTabId = SettingsGeneral;
     private string _sidebarSearch = string.Empty;
     private uint _importActionJobId;
-    private bool _syncPresetZoneInitialized;
-    private uint _syncPresetTerritoryId;
-    private uint _syncPresetContentFinderConditionId;
-    private byte _syncPresetClassJobLevel;
-    private string _syncPresetZoneLabel = string.Empty;
-    private string _syncPresetZoneSearch = string.Empty;
     private string _autoRecordZoneSearch = string.Empty;
     private readonly HashSet<string> _autoRecordZoneFilterIds = new(StringComparer.Ordinal);
     private bool _autoRecordZoneSortAscending;
@@ -176,6 +171,11 @@ internal sealed partial class PluginSettingsWindow : Window
                     Id = SettingsSyncPresets,
                     Label = I18n.Get("settings.sidebar.import_sync_presets"),
                 },
+                new MirageTwoColumnEntry
+                {
+                    Id = SettingsAutoLoadPresets,
+                    Label = I18n.Get("settings.sidebar.autoload_presets"),
+                },
             ],
         },
     ];
@@ -216,6 +216,9 @@ internal sealed partial class PluginSettingsWindow : Window
                 return;
             case SettingsSyncPresets:
                 DrawSyncPresetSettings();
+                return;
+            case SettingsAutoLoadPresets:
+                DrawAutoLoadPresetSettings();
                 return;
             default:
                 MirageUi.Header(I18n.Get("settings.header.settings"));

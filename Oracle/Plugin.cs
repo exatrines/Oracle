@@ -44,7 +44,8 @@ public sealed class Plugin : IDalamudPlugin
         IGameGui gameGui,
         IGameInteropProvider gameInterop,
         INotificationManager notificationManager,
-        IPlayerState playerState)
+        IPlayerState playerState,
+        IDutyState dutyState)
     {
         // 1. Dalamud service locator + config + localization + shared UI theme
         RegisterPluginServices(
@@ -60,7 +61,8 @@ public sealed class Plugin : IDalamudPlugin
             gameGui,
             gameInterop,
             notificationManager,
-            playerState);
+            playerState,
+            dutyState);
 
         // 2. Timeline persistence, runtime engine, auto-record
         var configStore = new ConfigStore(pluginInterface);
@@ -68,8 +70,13 @@ public sealed class Plugin : IDalamudPlugin
         _actionEffectReceive = new ActionEffectReceiveHub();
         _actorCastReceive = new ActorCastReceiveHub();
         _statusReceive = new StatusManagerReceiveHub();
-        _engine = new TimelineEngine(timelineStore, _actionEffectReceive, _actorCastReceive, _statusReceive);
         _pluginLog = new PluginLogService(_actionEffectReceive, _actorCastReceive, _statusReceive);
+        _engine = new TimelineEngine(
+            timelineStore,
+            _actionEffectReceive,
+            _actorCastReceive,
+            _statusReceive,
+            _pluginLog);
         _actionEffectReceive.Subscribe();
         _actorCastReceive.Subscribe();
         _statusReceive.Subscribe();
@@ -150,7 +157,8 @@ public sealed class Plugin : IDalamudPlugin
         IGameGui gameGui,
         IGameInteropProvider gameInterop,
         INotificationManager notificationManager,
-        IPlayerState playerState)
+        IPlayerState playerState,
+        IDutyState dutyState)
     {
         PluginServices.Init(
             pluginInterface,
@@ -165,13 +173,17 @@ public sealed class Plugin : IDalamudPlugin
             gameGui,
             gameInterop,
             notificationManager,
-            playerState);
+            playerState,
+            dutyState);
 
         C = pluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
         C.Initialize(pluginInterface);
         C.ThemeColors ??= MirageColorSettings.CreateDefault();
 
         I18n.Init(pluginInterface);
+        C.SyncPresets ??= [];
+        C.AutoLoadPresets ??= [];
+        EnemySyncPresets.MigrateOnce();
 
         MirageUi.ConfigureTheme(() => C.ThemeColors ?? MirageColorSettings.CreateDefault());
         MirageUi.Init(pluginInterface, textureProvider, log);

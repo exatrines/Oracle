@@ -26,7 +26,6 @@ internal sealed unsafe class AutoRecordService : IDisposable
     private uint _contentFinderConditionId;
     private byte _classJobLevel;
     private uint _classJobId;
-    private uint _sceneId;
     private string _contentLabel = string.Empty;
     private readonly List<TimelineCue> _cues = [];
     private readonly object _gate = new();
@@ -391,8 +390,6 @@ internal sealed unsafe class AutoRecordService : IDisposable
             ContentFinderConditionId = _contentFinderConditionId,
             ClassJobLevel = _classJobLevel,
             ClassJobId = _classJobId,
-            SceneId = _sceneId,
-            SceneFilterEnabled = true,
             Cues = BuildPersistedCuesUnlocked(),
         };
         return true;
@@ -597,7 +594,6 @@ internal sealed unsafe class AutoRecordService : IDisposable
     {
         _territoryTypeId = PluginServices.ClientState.TerritoryType;
         _classJobId = PluginServices.ObjectTable.LocalPlayer?.ClassJob.RowId ?? 0;
-        _sceneId = GameScene.ReadId();
         _contentFinderConditionId = 0;
         _classJobLevel = 0;
         _contentLabel = string.Empty;

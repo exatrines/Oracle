@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-10
+
+### Added
+
+- **Phase Presets**: one named boss DataID set per zone (visible and targetable, AND). Timelines pick a Phase or Any (zone / job only). Built-in: DSR P2 and M12S P2
+- Auto Load uses Dalamud duty events (start / recommence). Wipe and clear freeze switching until recommence or zone change
+- Auto Load reselects once at countdown start when out of combat
+- Editor hint when a named Phase has no unconflicted Any timeline for the same zone and job
+- Plugin log: Auto Load kind (duty start / restart, poll switch / unload, countdown reselect)
+
+### Changed
+
+- Timelines with no Phase match as Any. Older scene-split files become Any; two or more Any for the same zone and job will not auto-load
+- Settings: **Timer Sync Presets** and **Phase Presets** under Import; named, one zone each
+- Live Auto Load match shows the spawned battle NPC name next to each DataID
+- Plugin listing: auto-load by zone, job, and Phase preset
+- 1.1.0 Timer Sync overrides migrate once at load, including empty lists that hide built-in rows
+
+### Fixed
+
+- After a wipe, Auto Load no longer switches to Any while waiting for Phase bosses
+- Deleting or reloading the loaded timeline unloads it so a removed file cannot start the next pull
+- Phase / Timer Sync draft rows follow the selected preset; switching unnamed-zone customs no longer leaks in-progress input
+
+### Removed
+
+- Auto Load scene filter. `SceneId` / `SceneFilterEnabled` in timeline JSON are ignored. AutoRecord overlay still shows the live scene
+- Plugin log Scene Transition
+
 ## [1.1.0] - 2026-09-03
 
 ### Added
@@ -119,7 +148,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Renamed the plugin from ForeCast to **Oracle** (commands: `/oracle`, `/or`)
 
-[Unreleased]: https://github.com/exatrines/Oracle/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/exatrines/Oracle/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/exatrines/Oracle/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/exatrines/Oracle/compare/v1.0.6...v1.1.0
 [1.0.6]: https://github.com/exatrines/Oracle/releases/tag/v1.0.6
 [1.0.5]: https://github.com/exatrines/Oracle/releases/tag/v1.0.5

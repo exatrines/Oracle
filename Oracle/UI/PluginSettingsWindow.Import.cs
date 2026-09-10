@@ -1,6 +1,6 @@
 namespace Oracle.UI;
 
-// --- Import actions / Content Sync Presets ---
+// --- Import actions / Timer Sync Presets / Phase Presets ---
 
 internal sealed partial class PluginSettingsWindow
 {
@@ -24,33 +24,18 @@ internal sealed partial class PluginSettingsWindow
         FFLogsImportActionsUi.DrawForJob(_importActionJobId);
     }
 
-    // --- Content Sync Presets ---
+    // --- Timer Sync Presets ---
 
     private void DrawSyncPresetSettings()
     {
         MirageUi.Header(I18n.Get("settings.header.import_sync_presets"));
-        MirageUi.Text(I18n.Get("settings.help.import_sync_presets"), MirageUi.Color.Secondary);
+        SyncPresetSettingsUi.Draw();
+    }
 
-        if (!_syncPresetZoneInitialized)
-        {
-            _syncPresetZoneInitialized = true;
-            ZoneCombo.ApplyCurrent(
-                ref _syncPresetTerritoryId,
-                ref _syncPresetContentFinderConditionId,
-                ref _syncPresetClassJobLevel,
-                ref _syncPresetZoneLabel);
-        }
-
-        ZoneCombo.Draw(
-            I18n.Get("config.label.zone"),
-            ref _syncPresetTerritoryId,
-            ref _syncPresetContentFinderConditionId,
-            ref _syncPresetClassJobLevel,
-            ref _syncPresetZoneLabel,
-            ref _syncPresetZoneSearch,
-            id: "syncPresetZone");
-
-        SyncPresetSettingsUi.Draw(_syncPresetTerritoryId);
+    private void DrawAutoLoadPresetSettings()
+    {
+        MirageUi.Header(I18n.Get("settings.header.autoload_presets"));
+        AutoLoadPresetSettingsUi.Draw();
     }
 
     private static uint ResolveDefaultImportJobId()

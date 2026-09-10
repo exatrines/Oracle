@@ -1,3 +1,4 @@
+using Dalamud.Game.DutyState;
 using FFXIVClientStructs.FFXIV.Client.Game.Character;
 using FFXIVClientStructs.FFXIV.Client.Game.Network;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
@@ -5,7 +6,10 @@ using Oracle.Models;
 
 namespace Oracle.Services;
 
-/// <summary>Dalamud plugin log of countdown, combat, enemy casts, status apply/remove, action effects, and scene changes.</summary>
+/// <summary>
+/// Dalamud plugin log of countdown, combat, Auto Load, enemy casts, status apply/remove, and action effects.
+/// Owns its own Combat/Countdown detectors; does not share engine edges.
+/// </summary>
 internal sealed unsafe class PluginLogService : IDisposable
 {
     private readonly ActionEffectReceiveHub _receiveHub;
@@ -14,8 +18,6 @@ internal sealed unsafe class PluginLogService : IDisposable
     private readonly Clock _clock = new();
     private readonly CombatSyncDetector _combat = new();
     private readonly CountdownSyncDetector _countdown = new();
-    private bool _ready;
-    private uint _prevScene;
 
     public PluginLogService(
         ActionEffectReceiveHub receiveHub,
@@ -28,11 +30,15 @@ internal sealed unsafe class PluginLogService : IDisposable
         _receiveHub.Received += OnActionEffectReceived;
         _castHub.Received += OnCastReceived;
         _statusHub.Received += OnStatusChanged;
+        PluginServices.DutyState.DutyStarted += OnDutyStarted;
+        PluginServices.DutyState.DutyRecommenced += OnDutyRecommenced;
         _countdown.Subscribe();
     }
 
     public void Dispose()
     {
+        PluginServices.DutyState.DutyRecommenced -= OnDutyRecommenced;
+        PluginServices.DutyState.DutyStarted -= OnDutyStarted;
         _statusHub.Received -= OnStatusChanged;
         _receiveHub.Received -= OnActionEffectReceived;
         _castHub.Received -= OnCastReceived;
@@ -43,14 +49,6 @@ internal sealed unsafe class PluginLogService : IDisposable
     {
         _combat.Update();
         _countdown.Update();
-        var scene = GameScene.ReadId();
-
-        if (!_ready)
-        {
-            _ready = true;
-            _prevScene = scene;
-            return;
-        }
 
         if (_countdown.JustStarted)
             _clock.StartCountdown(_countdown.StartedRemaining);
@@ -66,11 +64,7 @@ internal sealed unsafe class PluginLogService : IDisposable
                 Write("Combat start");
             if (C.PluginLogCombat && _combat.JustLeftCombat)
                 Write("Combat end");
-            if (C.PluginLogScene && scene != _prevScene)
-                Write($"Scene {_prevScene} -> {scene}");
         }
-
-        _prevScene = scene;
 
         if (_combat.JustLeftCombat)
             _clock.Stop();
@@ -122,6 +116,18 @@ internal sealed unsafe class PluginLogService : IDisposable
             : $"0x{sourceEntityId:X8}";
         Write(
             $"Status {(removed ? "remove" : "apply")} {statusId} {ActionLookup.GetStatusName(statusId)} source={source}");
+    }
+
+    private void OnDutyStarted(IDutyStateEventArgs args) =>
+        WriteAutoLoad("Duty start");
+
+    private void OnDutyRecommenced(IDutyStateEventArgs args) =>
+        WriteAutoLoad("Duty restart");
+
+    internal void WriteAutoLoad(string message)
+    {
+        if (C.PluginLogEnabled && C.PluginLogAutoLoad)
+            Write(message);
     }
 
     private void Write(string message) =>

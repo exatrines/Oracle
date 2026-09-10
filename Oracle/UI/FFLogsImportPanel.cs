@@ -24,8 +24,7 @@ internal sealed class FFLogsImportPanel : IDisposable
     private uint _territoryTypeId;
     private uint _contentFinderConditionId;
     private byte _zoneClassJobLevel;
-    private int _sceneId;
-    private bool _sceneFilterEnabled;
+    private string _autoLoadPresetId = string.Empty;
     private bool _autoLoadEnabled = true;
     private bool _importEnemyHitMemos;
     private bool _importSync;
@@ -259,8 +258,7 @@ internal sealed class FFLogsImportPanel : IDisposable
             ref _zoneLabel,
             ref _zoneSearchFilter,
             ref _classJobId,
-            ref _sceneId,
-            ref _sceneFilterEnabled);
+            ref _autoLoadPresetId);
 
     private void DrawCreateButton(FFLogsFightInfo fight, FFLogsActorInfo player)
     {
@@ -373,8 +371,7 @@ internal sealed class FFLogsImportPanel : IDisposable
             TerritoryTypeId = _territoryTypeId,
             ContentFinderConditionId = _contentFinderConditionId,
             ClassJobLevel = _zoneClassJobLevel,
-            SceneId = (uint)_sceneId,
-            SceneFilterEnabled = _sceneFilterEnabled,
+            AutoLoadPresetId = _autoLoadPresetId,
             AutoLoadEnabled = _autoLoadEnabled,
         };
 
@@ -581,7 +578,7 @@ internal sealed class FFLogsImportPanel : IDisposable
 
         _selectedFightId = fight.Id;
         _selectedSourceId = player.Id;
-        _sceneId = 0;
+        _autoLoadPresetId = string.Empty;
         _classJobId = FFLogsImportService.ResolveClassJobId(player.SubType);
         if (_classJobId == 0)
             _classJobId = PluginServices.ObjectTable.LocalPlayer?.ClassJob.RowId ?? 0;

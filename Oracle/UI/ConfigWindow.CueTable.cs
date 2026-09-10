@@ -4,7 +4,7 @@ using Oracle.Services;
 
 namespace Oracle.UI;
 
-// --- Cue table: list, toolbar, draft row, clipboard, time formatting ---
+// --- Cue table: list, toolbar, draft row, clipboard ---
 
 internal sealed partial class ConfigWindow
 {

@@ -9,8 +9,7 @@ internal sealed class FFLogsImportOptions
     public uint TerritoryTypeId { get; init; }
     public uint ContentFinderConditionId { get; init; }
     public byte ClassJobLevel { get; init; }
-    public uint SceneId { get; init; }
-    public bool SceneFilterEnabled { get; init; }
+    public string AutoLoadPresetId { get; init; } = string.Empty;
     public bool AutoLoadEnabled { get; init; } = true;
 }
 
@@ -63,8 +62,7 @@ internal static class FFLogsImportService
             TerritoryTypeId = options.TerritoryTypeId,
             ContentFinderConditionId = options.ContentFinderConditionId,
             ClassJobLevel = options.ClassJobLevel,
-            SceneId = options.SceneId,
-            SceneFilterEnabled = options.SceneFilterEnabled,
+            AutoLoadPresetId = options.AutoLoadPresetId ?? string.Empty,
             Cues = cues.Select(c => c.CopyForDocument()).ToList(),
         };
     }

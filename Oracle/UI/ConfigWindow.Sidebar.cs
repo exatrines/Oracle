@@ -89,7 +89,11 @@ internal sealed partial class ConfigWindow
                     Id = "reload",
                     Icon = FontAwesomeIcon.Sync,
                     Tooltip = I18n.Get("sidebar.tooltip.reload"),
-                    OnClick = () => _store.Reload(),
+                    OnClick = () =>
+                    {
+                        _store.Reload();
+                        _engine.DropIfMissingFromStore();
+                    },
                 },
             ],
             SidebarNodes = sidebarNodes,
@@ -248,6 +252,8 @@ internal sealed partial class ConfigWindow
     {
         if (!_store.DeleteDocument(id))
             return;
+
+        _engine.DropIfLoaded(id);
 
         if (_editDoc != null && string.Equals(_editDoc.Id, id, StringComparison.OrdinalIgnoreCase))
             _editDoc = null;

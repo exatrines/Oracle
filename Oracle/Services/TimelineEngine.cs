@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Dalamud.Game.DutyState;
 using Dalamud.Interface.ImGuiNotification;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Character;
@@ -31,9 +32,10 @@ internal sealed class ActiveHighlight
 }
 
 /// <summary>
-/// Resolves zone/scene/job timelines, runs countdown/combat clock, feeds overlay cues.
+/// Resolves zone/job/preset timelines, runs countdown/combat clock, feeds overlay cues.
 /// Clock anchors: enemy cast start/effected and status apply/remove.
 /// Hook → queue → matching cue → ResyncClockTo.
+/// Auto Load waits through DutyWiped until DutyRecommenced (bosses may not be targetable yet).
 /// </summary>
 internal sealed unsafe class TimelineEngine : IDisposable
 {
@@ -41,6 +43,7 @@ internal sealed unsafe class TimelineEngine : IDisposable
     private readonly ActionEffectReceiveHub _receiveHub;
     private readonly ActorCastReceiveHub _castHub;
     private readonly StatusManagerReceiveHub _statusHub;
+    private readonly PluginLogService _pluginLog;
     private readonly CombatSyncDetector _combat = new();
     private readonly CountdownSyncDetector _countdown = new();
     private readonly ActionUseDetector _actionUse;
@@ -55,8 +58,6 @@ internal sealed unsafe class TimelineEngine : IDisposable
     private bool _running;
     private bool _previewMode;
 
-    private uint? _lockedSceneId;
-
     private readonly HashSet<string> _completedCueIds = new(StringComparer.Ordinal);
     private readonly HashSet<string> _startedHighlightIds = new(StringComparer.Ordinal);
     private readonly List<ActiveHighlight> _highlights = [];
@@ -65,6 +66,9 @@ internal sealed unsafe class TimelineEngine : IDisposable
     private uint _manualLoadTerritory;
     private uint _lastPlayerJobId;
     private bool _hasTrackedPlayerJob;
+    private uint _lastTerritoryType;
+    private bool _hasTrackedTerritory;
+    private bool _freezeAutoLoad;
 
     private readonly HashSet<string> _appliedAnchorCueIds = new(StringComparer.Ordinal);
 
@@ -74,22 +78,32 @@ internal sealed unsafe class TimelineEngine : IDisposable
         TimelineStore store,
         ActionEffectReceiveHub receiveHub,
         ActorCastReceiveHub castHub,
-        StatusManagerReceiveHub statusHub)
+        StatusManagerReceiveHub statusHub,
+        PluginLogService pluginLog)
     {
         _store = store;
         _receiveHub = receiveHub;
         _castHub = castHub;
         _statusHub = statusHub;
+        _pluginLog = pluginLog;
         _actionUse = new ActionUseDetector(receiveHub);
         _countdown.Subscribe();
         _actionUse.Subscribe();
         _castHub.Received += OnEnemyCastReceived;
         _receiveHub.Received += OnEnemyEffectReceived;
         _statusHub.Received += OnStatusChanged;
+        PluginServices.DutyState.DutyStarted += OnDutyStarted;
+        PluginServices.DutyState.DutyWiped += OnDutyWiped;
+        PluginServices.DutyState.DutyRecommenced += OnDutyRecommenced;
+        PluginServices.DutyState.DutyCompleted += OnDutyCompleted;
     }
 
     public void Dispose()
     {
+        PluginServices.DutyState.DutyCompleted -= OnDutyCompleted;
+        PluginServices.DutyState.DutyRecommenced -= OnDutyRecommenced;
+        PluginServices.DutyState.DutyWiped -= OnDutyWiped;
+        PluginServices.DutyState.DutyStarted -= OnDutyStarted;
         _statusHub.Received -= OnStatusChanged;
         _receiveHub.Received -= OnEnemyEffectReceived;
         _castHub.Received -= OnEnemyCastReceived;
@@ -109,15 +123,6 @@ internal sealed unsafe class TimelineEngine : IDisposable
     public bool IsContextMatched =>
         ResolveDocumentForPlayer() != null;
 
-    public uint CurrentGameSceneId => GameScene.ReadId();
-
-    public uint? LockedSceneId => _lockedSceneId;
-
-    public float ElapsedSeconds =>
-        _running ? _clockOffset + (float)(DateTime.UtcNow - _syncUtc).TotalSeconds : 0f;
-
-    // --- Matching ---
-
     public bool MatchesLiveZone(TimelineDocument doc) =>
         MatchesTerritory(doc, PluginServices.ClientState.TerritoryType);
 
@@ -127,45 +132,92 @@ internal sealed unsafe class TimelineEngine : IDisposable
         return MatchesJob(doc, playerJob);
     }
 
-    public bool MatchesLiveScene(TimelineDocument doc) =>
-        MatchesScene(doc, GameScene.ReadId());
+    public bool MatchesLivePreset(TimelineDocument doc) =>
+        MatchesPreset(doc);
+
+    public float ElapsedSeconds =>
+        _running ? _clockOffset + (float)(DateTime.UtcNow - _syncUtc).TotalSeconds : 0f;
 
     private TimelineDocument? ResolveDocumentForPlayer()
     {
         if (!string.IsNullOrEmpty(_manualLoadId))
         {
-            var forced = _store.Documents.FirstOrDefault(d =>
-                string.Equals(d.Id, _manualLoadId, StringComparison.OrdinalIgnoreCase));
+            var forced = _store.FindById(_manualLoadId);
             if (forced != null)
                 return forced;
 
             _manualLoadId = null;
         }
 
-        // Clock running or in combat: keep the loaded timeline (scene switches do not change docs).
         if (_running || _combat.InCombat)
             return _activeDoc;
+        if (_freezeAutoLoad)
+            return FindHeldDocument();
+
+        var candidates = ListAutoLoadCandidates();
+        var held = FindHeldDocument();
+        if (candidates.Count == 0)
+            return held;
+
+        var best = candidates[0];
+        if (best.Spec > 0 || held == null)
+            return best.Doc;
+        return held;
+    }
+
+    private TimelineDocument? ResolveDocumentForCountdown()
+    {
+        var candidates = ListAutoLoadCandidates();
+        if (candidates.Count > 0)
+            return candidates[0].Doc;
+
+        return FindHeldDocument();
+    }
+
+    private List<(TimelineDocument Doc, int Spec)> ListAutoLoadCandidates()
+    {
+        var territory = PluginServices.ClientState.TerritoryType;
+        var playerJob = PluginServices.ObjectTable.LocalPlayer?.ClassJob.RowId ?? 0;
+        var ranked = new List<(TimelineDocument Doc, int Index, int Spec)>();
+        HashSet<uint>? liveIds = null;
+
+        var index = 0;
+        foreach (var doc in _store.Documents)
+        {
+            var i = index++;
+            if (!doc.AutoLoadEnabled || _store.HasMatchConflict(doc))
+                continue;
+            if (!MatchesTerritory(doc, territory) || !MatchesJob(doc, playerJob))
+                continue;
+            if (!TryAutoLoadMatch(doc, ref liveIds, out var spec))
+                continue;
+            ranked.Add((doc, i, spec));
+        }
+
+        return ranked
+            .OrderByDescending(x => x.Spec)
+            .ThenBy(x => x.Index)
+            .Select(x => (x.Doc, x.Spec))
+            .ToList();
+    }
+
+    private TimelineDocument? FindHeldDocument()
+    {
+        if (_activeDoc == null)
+            return null;
+
+        var live = _store.FindById(_activeDoc.Id);
+        if (live == null)
+            return null;
+        if (!live.AutoLoadEnabled || _store.HasMatchConflict(live))
+            return null;
 
         var territory = PluginServices.ClientState.TerritoryType;
-        var player = PluginServices.ObjectTable.LocalPlayer;
-        var playerJob = player?.ClassJob.RowId ?? 0;
-        var scene = GameScene.ReadId();
+        var playerJob = PluginServices.ObjectTable.LocalPlayer?.ClassJob.RowId ?? 0;
+        if (!MatchesTerritory(live, territory) || !MatchesJob(live, playerJob))
+            return null;
 
-        var candidates = _store.Documents
-            .Select((d, index) => (Doc: d, Index: index))
-            .Where(x =>
-                x.Doc.AutoLoadEnabled
-                && !_store.HasMatchConflict(x.Doc)
-                && MatchesTerritory(x.Doc, territory)
-                && MatchesJob(x.Doc, playerJob)
-                && MatchesScene(x.Doc, scene))
-            // Exact scene filter beats Any; on ties, earlier in list wins.
-            .OrderByDescending(x => MatchSpecificity(x.Doc, scene))
-            .ThenBy(x => x.Index)
-            .Select(x => x.Doc)
-            .ToList();
-
-        return candidates.Count == 0 ? null : candidates[0];
+        return live;
     }
 
     private static bool MatchesTerritory(TimelineDocument doc, uint territory) =>
@@ -174,16 +226,42 @@ internal sealed unsafe class TimelineEngine : IDisposable
     private static bool MatchesJob(TimelineDocument doc, uint playerJob) =>
         doc.ClassJobId != 0 && playerJob != 0 && doc.ClassJobId == playerJob;
 
-    private static bool MatchesScene(TimelineDocument doc, uint scene) =>
-        !doc.SceneFilterEnabled || doc.SceneId == scene;
-
-    private static int MatchSpecificity(TimelineDocument doc, uint scene)
+    private static bool MatchesPreset(TimelineDocument doc)
     {
-        var score = 0;
-        if (doc.SceneFilterEnabled && doc.SceneId == scene)
-            score += 1_000;
-        return score;
+        HashSet<uint>? liveIds = null;
+        return TryAutoLoadMatch(doc, ref liveIds, out _);
     }
+
+    private static bool TryAutoLoadMatch(TimelineDocument doc, ref HashSet<uint>? liveIds, out int specificity)
+    {
+        specificity = 0;
+        if (string.IsNullOrWhiteSpace(doc.AutoLoadPresetId))
+            return true;
+
+        var preset = AutoLoadPresets.Find(doc.TerritoryTypeId, doc.AutoLoadPresetId);
+        if (preset == null)
+            return false;
+
+        var ids = AutoLoadPresets.DataIdsFor(preset);
+        liveIds ??= BossPresence.LiveDataIds();
+        if (!BossPresence.AllTargetable(ids, liveIds))
+            return false;
+
+        specificity = 1_000 + ids.Count;
+        return true;
+    }
+
+    private void OnDutyStarted(IDutyStateEventArgs args) =>
+        _freezeAutoLoad = false;
+
+    private void OnDutyRecommenced(IDutyStateEventArgs args) =>
+        _freezeAutoLoad = false;
+
+    private void OnDutyWiped(IDutyStateEventArgs args) =>
+        _freezeAutoLoad = true;
+
+    private void OnDutyCompleted(IDutyStateEventArgs args) =>
+        _freezeAutoLoad = true;
 
     // --- Load ---
 
@@ -234,10 +312,33 @@ internal sealed unsafe class TimelineEngine : IDisposable
         ClearTimelineState();
     }
 
+    public void DropIfLoaded(string documentId)
+    {
+        if (!SameId(_activeDoc?.Id, documentId) && !SameId(_manualLoadId, documentId))
+            return;
+
+        ClearTimelineState();
+    }
+
+    public void DropIfMissingFromStore()
+    {
+        if (_activeDoc != null && _store.FindById(_activeDoc.Id) == null)
+        {
+            ClearTimelineState();
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(_manualLoadId) && _store.FindById(_manualLoadId) == null)
+            ClearTimelineState();
+    }
+
+    private static bool SameId(string? a, string? b) =>
+        !string.IsNullOrEmpty(a)
+        && !string.IsNullOrEmpty(b)
+        && string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
     private void StartClock(TimelineDocument doc, float clockOffset, bool preview)
     {
-        // Capture scene at countdown / combat (or preview) start; keep until StopClock / resync.
-        _lockedSceneId = GameScene.ReadId();
         _previewMode = preview;
         Activate(doc, clockOffset);
     }
@@ -247,7 +348,6 @@ internal sealed unsafe class TimelineEngine : IDisposable
         if (!_running || _activeDoc == null)
             return;
 
-        _lockedSceneId = GameScene.ReadId();
         _syncUtc = DateTime.UtcNow;
         _clockOffset = timeOffsetSec;
         _completedCueIds.Clear();
@@ -276,7 +376,6 @@ internal sealed unsafe class TimelineEngine : IDisposable
         _running = false;
         _previewMode = false;
         _clockOffset = 0f;
-        _lockedSceneId = null; // resume live scene monitoring after combat end
         _completedCueIds.Clear();
         _startedHighlightIds.Clear();
         _highlights.Clear();
@@ -310,19 +409,26 @@ internal sealed unsafe class TimelineEngine : IDisposable
 
     public void Update()
     {
+        // combat
         _combat.Update();
         UpdateHighlights();
+
+        // territory / job
         ClearManualLoadOnTerritoryChange();
+        ClearFreezeOnTerritoryChange();
         ResetLoadOnJobChange();
 
+        // Auto Load document
         if (!SyncActiveDocument())
             return;
 
+        // countdown / clock
+        ApplyCountdownStart();
         var doc = _activeDoc!;
-        ApplyCountdownStart(doc);
         if (_combat.JustEnteredCombat && !_running)
             StartClock(doc, clockOffset: ResolveCombatStartOffset(), preview: false);
 
+        // anchors / cues
         if (_running)
         {
             ApplyClockAnchors();
@@ -348,6 +454,23 @@ internal sealed unsafe class TimelineEngine : IDisposable
         _manualLoadTerritory = 0;
         if (_running)
             StopClock();
+    }
+
+    private void ClearFreezeOnTerritoryChange()
+    {
+        var territory = PluginServices.ClientState.TerritoryType;
+        if (!_hasTrackedTerritory)
+        {
+            _hasTrackedTerritory = true;
+            _lastTerritoryType = territory;
+            return;
+        }
+
+        if (territory == _lastTerritoryType)
+            return;
+
+        _lastTerritoryType = territory;
+        _freezeAutoLoad = false;
     }
 
     /// <summary>
@@ -376,6 +499,8 @@ internal sealed unsafe class TimelineEngine : IDisposable
 
     private bool SyncActiveDocument()
     {
+        DropIfMissingFromStore();
+
         // While the clock is running, never switch timelines via Auto Load.
         if (_running && _activeDoc != null)
             return true;
@@ -384,33 +509,71 @@ internal sealed unsafe class TimelineEngine : IDisposable
         if (doc == null)
         {
             if (_running || _activeDoc != null)
+            {
+                LogAutoLoad("Auto Load (none)");
                 ClearTimelineState();
+            }
 
             return false;
         }
 
-        var changed = _activeDoc == null
-            || !string.Equals(_activeDoc.Id, doc.Id, StringComparison.OrdinalIgnoreCase);
+        var changed = !SameId(_activeDoc?.Id, doc.Id);
         if (changed)
         {
             if (_running)
                 StopClock();
 
-            // ManualLoad() already notifies; Sync only reports AutoLoad switches here.
             if (string.IsNullOrEmpty(_manualLoadId))
+            {
                 NotifyTimelineLoad(manual: false, doc);
+                LogAutoLoad($"Auto Load {doc.Name}");
+            }
         }
 
         _activeDoc = doc;
         return true;
     }
 
-    private void ApplyCountdownStart(TimelineDocument doc)
+    private void ApplyCountdownStart()
     {
         _countdown.Update();
-        if (_countdown.JustStarted)
-            StartClock(doc, -Math.Abs(_countdown.StartedRemaining), preview: false);
+        if (!_countdown.JustStarted)
+            return;
+
+        if (!_combat.InCombat)
+            ReselectForCountdown();
+
+        if (_activeDoc == null)
+            return;
+
+        StartClock(_activeDoc, -Math.Abs(_countdown.StartedRemaining), preview: false);
     }
+
+    private void ReselectForCountdown()
+    {
+        if (!string.IsNullOrEmpty(_manualLoadId))
+            return;
+
+        var selected = ResolveDocumentForCountdown();
+        if (selected == null)
+        {
+            LogAutoLoad("Auto Load reselect (none)");
+            return;
+        }
+
+        var previous = _activeDoc?.Name;
+        var changed = !SameId(_activeDoc?.Id, selected.Id);
+        if (changed)
+            NotifyTimelineLoad(manual: false, selected);
+
+        _activeDoc = selected;
+        LogAutoLoad(changed && !string.IsNullOrEmpty(previous)
+            ? $"Auto Load reselect {selected.Name} (was {previous})"
+            : $"Auto Load reselect {selected.Name}");
+    }
+
+    private void LogAutoLoad(string message) =>
+        _pluginLog.WriteAutoLoad(message);
 
     // Hook edge → matching cue → ResyncClockTo.
     private void ApplyClockAnchors()

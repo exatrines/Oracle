@@ -3,46 +3,51 @@ using Oracle.Services;
 
 namespace Oracle.UI;
 
-/// <summary>Per-zone Cast/Status sync preset editor (Settings / Import).</summary>
+/// <summary>Named Cast/Status sync preset editor (Settings / Import).</summary>
 internal static class SyncPresetSettingsUi
 {
-    private static uint _draftTerritory;
+    private static readonly PresetPickerState Picker = new();
+    private static string _draftPresetId = string.Empty;
     private static EnemySyncType _draftSyncType;
     private static uint _draftActionId;
     private static bool _draftEffected;
 
-    public static void Draw(uint territoryTypeId)
+    public static void Draw()
     {
-        if (territoryTypeId == 0)
-        {
-            MirageUi.Text(I18n.Get("settings.sync_presets.select_zone"), MirageUi.Color.Secondary);
-            return;
-        }
-
-        EnsureDraft(territoryTypeId);
-
-        if (EnemySyncPresets.HasBuiltIn(territoryTypeId))
-        {
-            using (ImRaii.Disabled(!C.HasSyncPresetOverride(territoryTypeId)))
+        var listed = EnemySyncPresets.Listed();
+        var current = PresetZoneListUi.DrawHeader(
+            listed,
+            Picker,
+            "syncPreset",
+            I18n.Get("settings.sync_presets.add"),
+            I18n.Get("settings.sync_presets.remove"),
+            I18n.Get("settings.sync_presets.button.reset_defaults"),
+            EnemySyncPresets.AddCustom,
+            EnemySyncPresets.SetName,
+            EnemySyncPresets.SetTerritory,
+            EnemySyncPresets.Remove,
+            id =>
             {
-                if (MirageUi.PrimaryButton(
-                        I18n.Get("settings.sync_presets.button.reset_defaults"),
-                        id: "syncPresetReset"))
-                {
-                    C.ResetSyncPresets(territoryTypeId);
-                    ResetDraft(territoryTypeId);
-                    return;
-                }
-            }
-        }
+                EnemySyncPresets.Reset(id);
+                ResetDraft(id);
+            },
+            EnemySyncPresets.HasOverride);
+        if (current == null)
+            return;
 
-        var rows = EnemySyncPresets.EditableSpecsFor(territoryTypeId);
-        var tableWidth = Math.Max(1f, ImGui.GetContentRegionAvail().X);
-        DrawRows(territoryTypeId, rows, tableWidth);
-        DrawDraftRow(territoryTypeId, rows, tableWidth);
+        DrawRows(current.Value.Id);
     }
 
-    private static void DrawRows(uint territoryTypeId, List<EnemySyncSpec> rows, float tableWidth)
+    private static void DrawRows(string presetId)
+    {
+        EnsureDraft(presetId);
+        var rows = EnemySyncPresets.EditableSpecsFor(presetId);
+        var tableWidth = Math.Max(1f, ImGui.GetContentRegionAvail().X);
+        DrawExisting(presetId, rows, tableWidth);
+        DrawDraftRow(presetId, rows, tableWidth);
+    }
+
+    private static void DrawExisting(string presetId, List<EnemySyncSpec> rows, float tableWidth)
     {
         if (rows.Count == 0)
         {
@@ -50,7 +55,7 @@ internal static class SyncPresetSettingsUi
             return;
         }
 
-        if (!BeginPresetTable("##syncPresetRows", tableWidth))
+        if (!PresetZoneListUi.BeginRowTable("##syncPresetRows", tableWidth))
             return;
 
         for (var i = 0; i < rows.Count; i++)
@@ -66,7 +71,7 @@ internal static class SyncPresetSettingsUi
             if (SyncCueFields.DrawRow(ref syncType, ref actionId, ref effected, "row"))
             {
                 rows[i] = new EnemySyncSpec(syncType, actionId, effected);
-                EnemySyncPresets.Save(territoryTypeId, rows);
+                EnemySyncPresets.Save(presetId, rows);
             }
 
             ImGui.TableNextColumn();
@@ -77,7 +82,7 @@ internal static class SyncPresetSettingsUi
                     tooltip: I18n.Get("config.cue.tooltip.delete_row")))
             {
                 rows.RemoveAt(i);
-                EnemySyncPresets.Save(territoryTypeId, rows);
+                EnemySyncPresets.Save(presetId, rows);
                 ImGui.PopID();
                 ImGui.EndTable();
                 return;
@@ -89,9 +94,9 @@ internal static class SyncPresetSettingsUi
         ImGui.EndTable();
     }
 
-    private static void DrawDraftRow(uint territoryTypeId, List<EnemySyncSpec> rows, float tableWidth)
+    private static void DrawDraftRow(string presetId, List<EnemySyncSpec> rows, float tableWidth)
     {
-        if (!BeginPresetTable("##syncPresetDraft", tableWidth))
+        if (!PresetZoneListUi.BeginRowTable("##syncPresetDraft", tableWidth))
             return;
 
         ImGui.PushID("##syncPresetDraft");
@@ -114,41 +119,25 @@ internal static class SyncPresetSettingsUi
             && canSubmit)
         {
             rows.Add(new EnemySyncSpec(_draftSyncType, _draftActionId, _draftEffected));
-            EnemySyncPresets.Save(territoryTypeId, rows);
-            ResetDraft(territoryTypeId);
+            EnemySyncPresets.Save(presetId, rows);
+            ResetDraft(presetId);
         }
 
         ImGui.PopID();
         ImGui.EndTable();
     }
 
-    private static bool BeginPresetTable(string id, float tableWidth)
+    private static void EnsureDraft(string presetId)
     {
-        const ImGuiTableFlags flags =
-            ImGuiTableFlags.Borders
-            | ImGuiTableFlags.RowBg
-            | ImGuiTableFlags.SizingStretchProp
-            | ImGuiTableFlags.NoHostExtendX;
-
-        if (!ImGui.BeginTable(id, 2, flags, new Vector2(tableWidth, 0f)))
-            return false;
-
-        ImGui.TableSetupColumn(string.Empty, ImGuiTableColumnFlags.WidthStretch);
-        ImGui.TableSetupColumn(string.Empty, ImGuiTableColumnFlags.WidthFixed, MirageUi.ResolveControlHeight() + 6f);
-        return true;
-    }
-
-    private static void EnsureDraft(uint territoryTypeId)
-    {
-        if (_draftTerritory == territoryTypeId)
+        if (string.Equals(_draftPresetId, presetId, StringComparison.OrdinalIgnoreCase))
             return;
 
-        ResetDraft(territoryTypeId);
+        ResetDraft(presetId);
     }
 
-    private static void ResetDraft(uint territoryTypeId)
+    private static void ResetDraft(string presetId)
     {
-        _draftTerritory = territoryTypeId;
+        _draftPresetId = presetId ?? string.Empty;
         _draftSyncType = EnemySyncType.Cast;
         _draftActionId = 0;
         _draftEffected = false;

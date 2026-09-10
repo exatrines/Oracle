@@ -20,6 +20,7 @@ internal static class PluginServices
     internal static IGameInteropProvider GameInterop { get; private set; } = null!;
     internal static INotificationManager NotificationManager { get; private set; } = null!;
     internal static IPlayerState PlayerState { get; private set; } = null!;
+    internal static IDutyState DutyState { get; private set; } = null!;
 
     internal static void Init(
         IDalamudPluginInterface pluginInterface,
@@ -34,7 +35,8 @@ internal static class PluginServices
         IGameGui gameGui,
         IGameInteropProvider gameInterop,
         INotificationManager notificationManager,
-        IPlayerState playerState)
+        IPlayerState playerState,
+        IDutyState dutyState)
     {
         PluginInterface = pluginInterface;
         CommandManager = commandManager;
@@ -49,6 +51,7 @@ internal static class PluginServices
         GameInterop = gameInterop;
         NotificationManager = notificationManager;
         PlayerState = playerState;
+        DutyState = dutyState;
     }
 
     internal static void Clear()
@@ -66,5 +69,6 @@ internal static class PluginServices
         GameInterop = null!;
         NotificationManager = null!;
         PlayerState = null!;
+        DutyState = null!;
     }
 }

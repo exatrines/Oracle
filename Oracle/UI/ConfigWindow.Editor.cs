@@ -83,7 +83,8 @@ internal sealed partial class ConfigWindow
         DrawMatchConflictMessage(doc);
         DrawAutoLoadZoneLabel(doc);
         DrawJobCombo(doc);
-        DrawSceneId(doc);
+        DrawAutoLoadPreset(doc);
+        DrawMissingAnyHint(doc);
     }
 
     private void DrawCommandSection(TimelineDocument doc)
@@ -132,6 +133,20 @@ internal sealed partial class ConfigWindow
         var group = _store.GetMatchConflictGroup(doc);
         var list = string.Join("\n", group.Select(d => $"· {d.Name}"));
         MirageUi.Warning(I18n.Format("config.conflict.warning", list));
+    }
+
+    private void DrawMissingAnyHint(TimelineDocument doc)
+    {
+        if (!doc.AutoLoadEnabled)
+            return;
+        if (doc.TerritoryTypeId == 0 || doc.ClassJobId == 0)
+            return;
+        if (string.IsNullOrWhiteSpace(doc.AutoLoadPresetId))
+            return;
+        if (_store.HasUnconflictedAny(doc.TerritoryTypeId, doc.ClassJobId))
+            return;
+
+        MirageUi.Warning(I18n.Get("config.autoload.warn.missing_any"));
     }
 
     private void EnsureTimelineNameDraft(TimelineDocument doc)
@@ -210,60 +225,30 @@ internal sealed partial class ConfigWindow
         PluginServices.ChatGui.Print(I18n.Format("config.chat.saved", doc.Name));
     }
 
-    private void DrawSceneId(TimelineDocument doc)
+    private void DrawAutoLoadPreset(TimelineDocument doc)
     {
-        var sceneId = (int)doc.SceneId;
-        var filterEnabled = doc.SceneFilterEnabled;
-        var gap = ImGui.GetStyle().ItemInnerSpacing.X;
-        var sceneMatch = _engine.MatchesLiveScene(doc);
-        var liveScene = _engine.CurrentGameSceneId;
-
-        if (!ImGui.BeginTable(
-                "##sceneField",
-                2,
-                ImGuiTableFlags.SizingStretchProp | ImGuiTableFlags.NoPadOuterX,
-                new Vector2(-1f, 0f)))
+        var presetId = doc.AutoLoadPresetId ?? string.Empty;
+        var presetMatch = _engine.MatchesLivePreset(doc);
+        var liveLabel = FormatLiveBossLabels();
+        if (!AutoLoadPresetField.Draw(
+                I18n.Get("config.label.autoload_preset"),
+                "editorPreset",
+                doc.TerritoryTypeId,
+                ref presetId,
+                liveMatch: presetMatch,
+                matchTooltip: FormatMatchTooltip(presetMatch, liveLabel)))
             return;
 
-        ImGui.TableSetupColumn("##lbl", ImGuiTableColumnFlags.WidthFixed, MirageUi.FieldLabelColumnWidth);
-        ImGui.TableSetupColumn("##fld", ImGuiTableColumnFlags.WidthStretch);
-        ImGui.TableNextRow();
+        doc.AutoLoadPresetId = presetId ?? string.Empty;
+        PersistDocument(doc);
+    }
 
-        ImGui.TableNextColumn();
-        ImGui.AlignTextToFramePadding();
-        MirageUi.Text(I18n.Get("config.label.scene_id"), wrap: false);
-        ImGui.SameLine(0f, gap);
-        ImGui.PushFont(UiBuilder.IconFont);
-        ImGui.PushStyleColor(ImGuiCol.Text, MirageUi.GetColor(MirageUi.Color.Secondary));
-        ImGui.TextUnformatted(FontAwesomeIcon.InfoCircle.ToIconString());
-        ImGui.PopStyleColor();
-        ImGui.PopFont();
-
-        var locked = _engine.LockedSceneId;
-        MirageUi.Tooltip(
-            I18n.Format(
-                "config.scene.tooltip",
-                liveScene,
-                locked != null
-                    ? I18n.Format("config.scene.tooltip.locked", locked)
-                    : I18n.Get("config.scene.tooltip.unlocks")));
-
-        ImGui.TableNextColumn();
-        if (SceneFilterField.Draw(
-                "scene",
-                ref filterEnabled,
-                ref sceneId,
-                liveMatch: sceneMatch,
-                matchTooltip: FormatMatchTooltip(
-                    sceneMatch,
-                    filterEnabled ? liveScene.ToString() : I18n.Get("config.scene.any"))))
-        {
-            doc.SceneFilterEnabled = filterEnabled;
-            doc.SceneId = (uint)Math.Max(0, sceneId);
-            PersistDocument(doc);
-        }
-
-        ImGui.EndTable();
+    private static string FormatLiveBossLabels()
+    {
+        var live = BossPresence.LiveLabelsSorted();
+        if (live.Count == 0)
+            return I18n.Get("config.match.none");
+        return string.Join(", ", live);
     }
 
     private static string FormatMatchTooltip(bool matched, string current) =>
@@ -341,6 +326,8 @@ internal sealed partial class ConfigWindow
         doc.TerritoryTypeId = territoryTypeId;
         doc.ContentFinderConditionId = contentFinderConditionId;
         doc.ClassJobLevel = classJobLevel;
+        if (AutoLoadPresets.Find(doc.TerritoryTypeId, doc.AutoLoadPresetId) == null)
+            doc.AutoLoadPresetId = string.Empty;
         PersistDocument(doc);
         if (doc.TerritoryTypeId != previousTerritory)
             _store.MoveToEndOfZone(doc.Id);

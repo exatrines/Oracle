@@ -17,12 +17,23 @@ internal static class ZoneCombo
         ref string searchFilter,
         string id,
         bool allowClear = true,
-        bool showSetCurrent = true)
+        bool showSetCurrent = true,
+        float width = MirageUi.InputWidthFill,
+        IReadOnlySet<uint>? excludeTerritoryIds = null)
     {
         SyncLabel(territoryTypeId, contentFinderConditionId, classJobLevel, ref zoneLabel);
 
         var options = DutyContentCatalog.GetZoneOptions();
-        var items = options.Select(o => o.Label).ToList();
+        var items = new List<string>();
+        foreach (var option in options)
+        {
+            if (excludeTerritoryIds != null
+                && option.TerritoryTypeId != territoryTypeId
+                && excludeTerritoryIds.Contains(option.TerritoryTypeId))
+                continue;
+            items.Add(option.Label);
+        }
+
         var selected = territoryTypeId == 0 ? string.Empty : zoneLabel;
 
         if (territoryTypeId != 0
@@ -49,12 +60,20 @@ internal static class ZoneCombo
             allowClear: allowClear,
             emptyMessage: I18n.Get("config.zone.empty"),
             searchHint: I18n.Get("config.zone.search_hint"),
-            width: MirageUi.InputWidthFill,
+            width: width,
             headerButtonLabel: headerButtonLabel,
             onHeaderButton: onHeaderButton);
 
         if (setCurrentClicked)
+        {
+            var current = PluginServices.ClientState.TerritoryType;
+            if (excludeTerritoryIds != null
+                && current != territoryTypeId
+                && excludeTerritoryIds.Contains(current))
+                return false;
+
             return ApplyCurrent(ref territoryTypeId, ref contentFinderConditionId, ref classJobLevel, ref zoneLabel);
+        }
 
         if (!changed)
             return false;

@@ -57,6 +57,8 @@ internal sealed unsafe class TimelineEngine : IDisposable
     private float _clockOffset;
     private bool _running;
     private bool _previewMode;
+    private bool _previewPaused;
+    private DateTime _pauseHeldUtc;
 
     private readonly HashSet<string> _completedCueIds = new(StringComparer.Ordinal);
     private readonly HashSet<string> _startedHighlightIds = new(StringComparer.Ordinal);
@@ -116,6 +118,7 @@ internal sealed unsafe class TimelineEngine : IDisposable
 
     public bool IsRunning => _running;
     public bool IsPreview => _previewMode;
+    public bool IsPreviewPaused => _previewPaused;
     public TimelineDocument? ActiveDocument => _activeDoc;
 
     internal ActionUseDetector ActionUse => _actionUse;
@@ -135,8 +138,10 @@ internal sealed unsafe class TimelineEngine : IDisposable
     public bool MatchesLivePreset(TimelineDocument doc) =>
         MatchesPreset(doc);
 
+    private DateTime ClockNowUtc => _previewPaused ? _pauseHeldUtc : DateTime.UtcNow;
+
     public float ElapsedSeconds =>
-        _running ? _clockOffset + (float)(DateTime.UtcNow - _syncUtc).TotalSeconds : 0f;
+        _running ? _clockOffset + (float)(ClockNowUtc - _syncUtc).TotalSeconds : 0f;
 
     private TimelineDocument? ResolveDocumentForPlayer()
     {
@@ -288,6 +293,9 @@ internal sealed unsafe class TimelineEngine : IDisposable
 
     // --- Clock ---
 
+    public bool CanStartPreview =>
+        ResolveDocumentForPlayer() != null || _store.ActiveDocument != null;
+
     public void StartPreview(float countdownSeconds = 21f)
     {
         var doc = ResolveDocumentForPlayer() ?? _store.ActiveDocument;
@@ -305,6 +313,35 @@ internal sealed unsafe class TimelineEngine : IDisposable
             return;
         StopClock();
         PluginServices.ChatGui.Print(I18n.Get("engine.chat.preview_stopped"));
+    }
+
+    public bool TryTogglePreviewPause()
+    {
+        if (!_running || !_previewMode)
+            return false;
+
+        if (_previewPaused)
+        {
+            var delta = DateTime.UtcNow - _pauseHeldUtc;
+            _syncUtc += delta;
+            for (var i = 0; i < _highlights.Count; i++)
+            {
+                var h = _highlights[i];
+                _highlights[i] = new ActiveHighlight
+                {
+                    CueId = h.CueId,
+                    StartedUtc = h.StartedUtc + delta,
+                    DurationSec = h.DurationSec,
+                };
+            }
+
+            _previewPaused = false;
+            return true;
+        }
+
+        _pauseHeldUtc = DateTime.UtcNow;
+        _previewPaused = true;
+        return true;
     }
 
     public void Unload()
@@ -375,6 +412,7 @@ internal sealed unsafe class TimelineEngine : IDisposable
     {
         _running = false;
         _previewMode = false;
+        _previewPaused = false;
         _clockOffset = 0f;
         _completedCueIds.Clear();
         _startedHighlightIds.Clear();
@@ -393,6 +431,7 @@ internal sealed unsafe class TimelineEngine : IDisposable
     private void Activate(TimelineDocument doc, float clockOffset)
     {
         _activeDoc = doc;
+        _previewPaused = false;
         _syncUtc = DateTime.UtcNow;
         _clockOffset = clockOffset;
         _running = true;
@@ -429,7 +468,7 @@ internal sealed unsafe class TimelineEngine : IDisposable
             StartClock(doc, clockOffset: ResolveCombatStartOffset(), preview: false);
 
         // anchors / cues
-        if (_running)
+        if (_running && !_previewPaused)
         {
             ApplyClockAnchors();
             ProcessCueFires();
@@ -438,7 +477,14 @@ internal sealed unsafe class TimelineEngine : IDisposable
         if (_combat.JustLeftCombat)
             StopClock();
 
-        DrainUsedActions();
+        if (_previewPaused)
+        {
+            while (_actionUse.TryDequeue(out _))
+            {
+            }
+        }
+        else
+            DrainUsedActions();
     }
 
     private void ClearManualLoadOnTerritoryChange()
@@ -749,7 +795,7 @@ internal sealed unsafe class TimelineEngine : IDisposable
             _highlights.Add(new ActiveHighlight
             {
                 CueId = cue.Id,
-                StartedUtc = DateTime.UtcNow,
+                StartedUtc = ClockNowUtc,
                 DurationSec = C.MaxHighlightAfterSeconds > 0f ? C.MaxHighlightAfterSeconds : 0.1f,
             });
         }
@@ -825,7 +871,7 @@ internal sealed unsafe class TimelineEngine : IDisposable
 
     private void UpdateHighlights()
     {
-        var now = DateTime.UtcNow;
+        var now = ClockNowUtc;
         for (var i = _highlights.Count - 1; i >= 0; i--)
         {
             if (now < _highlights[i].EndsUtc)
@@ -854,7 +900,7 @@ internal sealed unsafe class TimelineEngine : IDisposable
             return [];
 
         var elapsed = _running ? ElapsedSeconds : 0f;
-        var now = DateTime.UtcNow;
+        var now = ClockNowUtc;
         var list = new List<UpcomingCue>();
 
         foreach (var cue in _activeDoc.Cues)

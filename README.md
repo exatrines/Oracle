@@ -43,6 +43,7 @@ https://raw.githubusercontent.com/exatrines/DalamudPlugins/refs/heads/main/plugi
 | `/oracle load <name>` | Load a timeline |
 | `/oracle unload` | Unload the timeline |
 | `/oracle preview start [sec]` | Start preview countdown (default 21) |
+| `/oracle preview pause` | Pause or resume preview |
 | `/oracle preview stop` | Stop preview |
 
 ## For developers

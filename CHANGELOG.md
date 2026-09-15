@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-09-15
+
+### Added
+
+- **Preview pause**: `/oracle preview pause` pauses or resumes a running preview. Overlay header shows Preview (paused). The live combat clock is unchanged
+- `/oracle debug`: developer overlay with preview controls and a hotbar-highlight grid. Closed after reload; not in the plugin listing
+
+### Fixed
+
+- Pad **hotbar icon highlight**: only the currently visible XHB set is marked (not other palettes). WXHB uses the linked set and half. Highlights follow L2/R2 hold, set changes, and Expanded Hold halves
+- Missing or unusual hotbar icon IDs no longer throw when looking up a game icon (empty cell instead)
+
 ## [1.2.0] - 2026-09-10
 
 ### Added
@@ -148,7 +160,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Renamed the plugin from ForeCast to **Oracle** (commands: `/oracle`, `/or`)
 
-[Unreleased]: https://github.com/exatrines/Oracle/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/exatrines/Oracle/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/exatrines/Oracle/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/exatrines/Oracle/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/exatrines/Oracle/compare/v1.0.6...v1.1.0
 [1.0.6]: https://github.com/exatrines/Oracle/releases/tag/v1.0.6

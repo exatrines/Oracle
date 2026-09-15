@@ -58,6 +58,7 @@ UI は英語と日本語に対応しています。設定から切り替えら�
 | `/oracle load <name>` | タイムラインを読み込む |
 | `/oracle unload` | タイムラインを外す |
 | `/oracle preview start [sec]` | プレビューのカウントダウンを開始（省略時は 21 秒） |
+| `/oracle preview pause` | プレビューの一時停止／再開 |
 | `/oracle preview stop` | プレビューを停止 |
 
 ## 開発者向け

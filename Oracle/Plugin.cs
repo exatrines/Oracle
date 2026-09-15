@@ -29,6 +29,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly AutoRecordService _autoRecord;
     private readonly PluginLogService _pluginLog;
     private readonly HotbarHighlightService _hotbarHighlight;
+    private readonly DebugWindow _debugWindow;
     private readonly CommandInfo _oracleCommand;
 
     public Plugin(
@@ -88,6 +89,7 @@ public sealed class Plugin : IDalamudPlugin
             _actorCastReceive,
             _statusReceive);
         _hotbarHighlight = new HotbarHighlightService(_engine);
+        _debugWindow = new DebugWindow(_engine, _hotbarHighlight);
 
         // 3. ImGui windows — ActionSearch / import panels capture ConfigWindow via delayed assign
         _pluginSettingsWindow = new PluginSettingsWindow();
@@ -130,6 +132,7 @@ public sealed class Plugin : IDalamudPlugin
         _windowSystem.AddWindow(_overlayWindow);
         _windowSystem.AddWindow(_majorOverlayWindow);
         _windowSystem.AddWindow(_autoRecordOverlayWindow);
+        _windowSystem.AddWindow(_debugWindow);
         _windowSystem.AddWindow(actionSearch);
 
         pluginInterface.UiBuilder.Draw += DrawUi;
@@ -226,6 +229,9 @@ public sealed class Plugin : IDalamudPlugin
             case "preview":
                 HandlePreviewCommand(parts.Skip(1).ToArray());
                 break;
+            case "debug":
+                _debugWindow.Toggle();
+                break;
             default:
                 PluginServices.ChatGui.PrintError(I18n.Format("cmd.err.unknown", parts[0]));
                 break;
@@ -294,6 +300,18 @@ public sealed class Plugin : IDalamudPlugin
             case "stop":
                 _engine.StopPreview();
                 break;
+            case "pause":
+                if (!_engine.TryTogglePreviewPause())
+                {
+                    PluginServices.ChatGui.PrintError(I18n.Get("cmd.err.preview_pause"));
+                    return;
+                }
+
+                PluginServices.ChatGui.Print(
+                    I18n.Get(_engine.IsPreviewPaused
+                        ? "cmd.chat.preview_paused"
+                        : "cmd.chat.preview_resumed"));
+                break;
             default:
                 PluginServices.ChatGui.PrintError(I18n.Get("cmd.err.preview_usage"));
                 break;
@@ -352,8 +370,8 @@ public sealed class Plugin : IDalamudPlugin
 
     private void DrawUi()
     {
+        _hotbarHighlight.Draw(_debugWindow.IsOpen);
         _windowSystem.Draw();
-        _hotbarHighlight.Draw();
     }
 
     public void Dispose()

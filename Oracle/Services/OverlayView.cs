@@ -32,7 +32,7 @@ internal static class OverlayView
     public static string HeaderText(TimelineEngine engine)
     {
         var header = engine.IsPreview
-            ? I18n.Get("overlay.preview")
+            ? I18n.Get(engine.IsPreviewPaused ? "overlay.preview_paused" : "overlay.preview")
             : engine.ActiveDocument?.Name ?? I18n.Get("overlay.fallback_timeline");
         var clock = engine.IsRunning
             ? I18n.Format("overlay.seconds", engine.ElapsedSeconds)

@@ -17,6 +17,6 @@
   "ImageUrls": [
     "https://raw.githubusercontent.com/exatrines/Oracle/main/docs/screenshots/major-hotbar-highlight-730x380.png"
   ],
-  "DownloadLinkInstall": "https://github.com/exatrines/Oracle/releases/latest/download/Oracle.zip",
-  "DownloadLinkUpdate": "https://github.com/exatrines/Oracle/releases/latest/download/Oracle.zip"
+  "DownloadLinkInstall": "https://github.com/exatrines/Oracle/releases/download/v1.2.1/Oracle.zip",
+  "DownloadLinkUpdate": "https://github.com/exatrines/Oracle/releases/download/v1.2.1/Oracle.zip"
 }

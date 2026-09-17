@@ -1,6 +1,6 @@
 # Oracle
 
-[日本語](README.ja.md)
+[日本語](docs/README.ja.md)
 
 ![Major overlay and hotbar icon highlight](docs/screenshots/major-hotbar-highlight-730x380.png)
 
@@ -21,14 +21,12 @@ https://raw.githubusercontent.com/exatrines/DalamudPlugins/refs/heads/main/plugi
 
 ## Features
 
-- **Timeline editor** — cues by time offset (actions, memos, or sync), zone / job auto-load (optional boss DataID preset), manual load commands
-- **Overlays** — list overlay (upcoming actions) and major overlay (scrolling icon lane); memos and sync stay in the editor
-- **Action highlight** — before / after windows with optional blink; optional hotbar highlight
-- **FFLogs import** — player casts from a report, optional enemy-attack memos, and Import sync when the zone has presets (API credentials in settings)
-- **AutoRecord** — record your actions and enemy cast/status events in selected duties, then import into a timeline
-- **Timer Sync Presets** — per-zone enemy casts and statuses that resync the clock; used by Import sync
-- **Phase Presets** — per-zone boss DataID sets used out of combat. Empty Phase = Any (zone / job only). Built-in DSR P2 and M12S P2; stored override until Reset to default. Older scene-split files become Any; more than one Any for the same zone and job will not auto-load
-- **i18n** — English and Japanese UI strings
+- Set up a timeline of which skills to use and when
+- Import your skills from an FFLogs report
+- Record a pull in-game and turn it into a timeline
+- Automatically load a timeline that matches the duty when it starts
+- See upcoming skills as a list or a scrolling row of icons
+- Light up the skill on your hotbar when it's time to use it
 
 ## Commands
 

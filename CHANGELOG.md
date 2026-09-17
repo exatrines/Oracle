@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-09-17
+
+### Changed
+
+- Updated MirageUI
+
 ## [1.2.1] - 2026-09-15
 
 ### Added
@@ -160,7 +166,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Renamed the plugin from ForeCast to **Oracle** (commands: `/oracle`, `/or`)
 
-[Unreleased]: https://github.com/exatrines/Oracle/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/exatrines/Oracle/compare/v1.2.2...HEAD
+[1.2.2]: https://github.com/exatrines/Oracle/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/exatrines/Oracle/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/exatrines/Oracle/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/exatrines/Oracle/compare/v1.0.6...v1.1.0

@@ -22,6 +22,31 @@ public sealed class Configuration : IPluginConfiguration
     public int OverlayMaxRows { get; set; } = 8;
     public float LookaheadSeconds { get; set; } = 30f;
 
+    public const float DefaultOverlayRowWidth = 280f;
+    public const float DefaultOverlayRowHeight = 30f;
+    public const float DefaultOverlayIconSize = 24f;
+    public const float DefaultOverlayTextSizePx = 0f;
+    public const bool DefaultOverlayShowActionNames = true;
+    public const float MinOverlayRowWidth = 160f;
+    public const float MaxOverlayRowWidth = 480f;
+    public const float MinOverlayRowHeight = 20f;
+    public const float MaxOverlayRowHeight = 64f;
+    public const float MinOverlayTextSizePx = 8f;
+    public const float MaxOverlayTextSizePx = 48f;
+    public const float MinOverlayIconSize = 12f;
+    public const float MaxOverlayIconSize = 96f;
+
+    public static readonly Vector4 DefaultOverlayRowBackgroundColor = new(0f, 0f, 0f, 0.5f);
+    public static readonly Vector4 DefaultOverlayTextColor = new(0.92f, 0.92f, 0.92f, 1f);
+
+    public float OverlayRowWidth { get; set; } = DefaultOverlayRowWidth;
+    public float OverlayRowHeight { get; set; } = DefaultOverlayRowHeight;
+    public float OverlayTextSizePx { get; set; } = DefaultOverlayTextSizePx;
+    public bool OverlayShowActionNames { get; set; } = DefaultOverlayShowActionNames;
+    public OverlayRowDirection OverlayRowDirection { get; set; } = OverlayRowDirection.LeftToRight;
+    public Vector4 OverlayRowBackgroundColor { get; set; } = DefaultOverlayRowBackgroundColor;
+    public Vector4 OverlayTextColor { get; set; } = DefaultOverlayTextColor;
+
     // --- Action highlight (shared by Timeline / Major / Hotbar) ---
 
     /// <summary>How far ahead a used action can complete a matching cue.</summary>
@@ -255,4 +280,16 @@ public sealed class Configuration : IPluginConfiguration
 
         Save();
     }
+}
+
+public enum OverlayRowDirection
+{
+    LeftToRight = 0,
+    RightToLeft = 1,
+}
+
+public enum MajorOverlayLaneMode
+{
+    Single = 0,
+    AbilityAndSkill = 1,
 }

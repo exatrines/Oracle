@@ -1,5 +1,3 @@
-using Oracle.Models;
-
 namespace Oracle.UI;
 
 // --- Timeline / Major / Hotbar / Action Highlight ---
@@ -41,6 +39,74 @@ internal sealed partial class PluginSettingsWindow
         if (MirageUi.SliderInt(I18n.Get("settings.slider.max_rows"), ref maxRows, 1, 30))
         {
             C.OverlayMaxRows = Math.Clamp(maxRows, 1, 50);
+            C.Save();
+        }
+
+        MirageUi.SubHeader(I18n.Get("settings.subheader.layout"));
+
+        var textSizePx = C.OverlayTextSizePx > 0f
+            ? C.OverlayTextSizePx
+            : ImGui.GetFontSize();
+        DrawResettableSliderFloat(
+            I18n.Get("settings.slider.text_size"),
+            textSizePx,
+            Configuration.MinOverlayTextSizePx,
+            Configuration.MaxOverlayTextSizePx,
+            Configuration.DefaultOverlayTextSizePx,
+            v => C.OverlayTextSizePx = v,
+            "%.0f",
+            "TimelineLayoutText");
+
+        DrawResettableSliderFloat(
+            I18n.Get("settings.slider.row_width"),
+            C.OverlayRowWidth,
+            Configuration.MinOverlayRowWidth,
+            Configuration.MaxOverlayRowWidth,
+            Configuration.DefaultOverlayRowWidth,
+            v => C.OverlayRowWidth = Math.Clamp(
+                v,
+                Configuration.MinOverlayRowWidth,
+                Configuration.MaxOverlayRowWidth),
+            "%.0f",
+            "TimelineLayoutWidth");
+
+        DrawResettableSliderFloat(
+            I18n.Get("settings.slider.row_height"),
+            C.OverlayRowHeight,
+            Configuration.MinOverlayRowHeight,
+            Configuration.MaxOverlayRowHeight,
+            Configuration.DefaultOverlayRowHeight,
+            v => C.OverlayRowHeight = Math.Clamp(
+                v,
+                Configuration.MinOverlayRowHeight,
+                Configuration.MaxOverlayRowHeight),
+            "%.0f",
+            "TimelineLayoutHeight");
+
+        DrawTimelineRowDirection();
+
+        MirageUi.SubHeader(I18n.Get("settings.subheader.colors"));
+
+        DrawResettableColor(
+            I18n.Get("settings.color.background"),
+            C.OverlayRowBackgroundColor,
+            Configuration.DefaultOverlayRowBackgroundColor,
+            v => C.OverlayRowBackgroundColor = v,
+            "TimelineColorBg");
+
+        DrawResettableColor(
+            I18n.Get("settings.color.text"),
+            C.OverlayTextColor,
+            Configuration.DefaultOverlayTextColor,
+            v => C.OverlayTextColor = v,
+            "TimelineColorText");
+
+        MirageUi.SubHeader(I18n.Get("settings.subheader.display"));
+
+        var showNames = C.OverlayShowActionNames;
+        if (MirageUi.Checkbox(I18n.Get("settings.checkbox.show_action_names"), ref showNames))
+        {
+            C.OverlayShowActionNames = showNames;
             C.Save();
         }
     }
@@ -286,6 +352,42 @@ internal sealed partial class PluginSettingsWindow
 
     // --- Helpers ---
 
+    private static void DrawTimelineRowDirection()
+    {
+        if (!ImGui.BeginTable(
+                "##TimelineRowDirection",
+                2,
+                ImGuiTableFlags.SizingStretchProp | ImGuiTableFlags.NoPadOuterX,
+                new Vector2(-1f, 0f)))
+            return;
+
+        ImGui.TableSetupColumn("##label", ImGuiTableColumnFlags.WidthFixed, MirageUi.FieldLabelColumnWidth);
+        ImGui.TableSetupColumn("##field", ImGuiTableColumnFlags.WidthStretch);
+        ImGui.TableNextRow();
+        ImGui.TableNextColumn();
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextUnformatted(I18n.Get("settings.timeline.direction"));
+        ImGui.TableNextColumn();
+
+        var dir = (int)C.OverlayRowDirection;
+        var changed = MirageUi.Radio(
+            $"{I18n.Get("settings.timeline.direction.ltr")}##TimelineDirLtr",
+            ref dir,
+            (int)OverlayRowDirection.LeftToRight);
+        ImGui.SameLine();
+        changed |= MirageUi.Radio(
+            $"{I18n.Get("settings.timeline.direction.rtl")}##TimelineDirRtl",
+            ref dir,
+            (int)OverlayRowDirection.RightToLeft);
+        ImGui.EndTable();
+
+        if (!changed)
+            return;
+
+        C.OverlayRowDirection = (OverlayRowDirection)dir;
+        C.Save();
+    }
+
     private static void DrawHighlightPhaseSettings(
         string header,
         string idSuffix,
@@ -360,5 +462,85 @@ internal sealed partial class PluginSettingsWindow
             if (MirageUi.Checkbox(label, ref enabled))
                 C.SetHotbarHighlightEnabled(hotbarId, enabled);
         }
+    }
+
+    private static void DrawResettableSliderFloat(
+        string label,
+        float value,
+        float min,
+        float max,
+        float defaultValue,
+        Action<float> setValue,
+        string format,
+        string id)
+    {
+        var v = value;
+        var (changed, reset) = DrawResettableField(
+            id,
+            () => MirageUi.SliderFloat(label, ref v, min, max, format, id: id));
+        if (reset)
+            setValue(defaultValue);
+        else if (changed)
+            setValue(v);
+        else
+            return;
+
+        C.Save();
+    }
+
+    private static void DrawResettableColor(
+        string label,
+        Vector4 value,
+        Vector4 defaultValue,
+        Action<Vector4> setValue,
+        string id)
+    {
+        var v = value;
+        var (changed, reset) = DrawResettableField(
+            id,
+            () => MirageUi.ColorEdit4(label, ref v, id: id));
+        if (reset)
+            setValue(defaultValue);
+        else if (changed)
+            setValue(v);
+        else
+            return;
+
+        C.Save();
+    }
+
+    private static (bool Changed, bool Reset) DrawResettableField(string id, Func<bool> drawField)
+    {
+        var btn = MirageUi.ResolveControlHeight();
+        var cell = ImGui.GetStyle().CellPadding;
+        ImGui.PushStyleVar(ImGuiStyleVar.CellPadding, new Vector2(cell.X, 0f));
+        if (!ImGui.BeginTable(
+                $"##{id}Row",
+                2,
+                ImGuiTableFlags.SizingStretchProp | ImGuiTableFlags.NoPadOuterX,
+                new Vector2(-1f, 0f)))
+        {
+            ImGui.PopStyleVar();
+            return (false, false);
+        }
+
+        ImGui.TableSetupColumn("##field", ImGuiTableColumnFlags.WidthStretch);
+        ImGui.TableSetupColumn("##reset", ImGuiTableColumnFlags.WidthFixed, btn);
+        ImGui.TableNextRow();
+        ImGui.TableNextColumn();
+        ImGui.PopStyleVar();
+
+        var spacing = ImGui.GetStyle().ItemSpacing;
+        ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(spacing.X, 0f));
+        var changed = drawField();
+        ImGui.TableNextColumn();
+        var reset = MirageUi.IconButton(
+            FontAwesomeIcon.Undo,
+            id: $"{id}Reset",
+            size: new Vector2(btn, btn),
+            tooltip: I18n.Get("settings.button.reset_default"));
+        ImGui.EndTable();
+        ImGui.PopStyleVar();
+        return (changed, reset);
     }
 }

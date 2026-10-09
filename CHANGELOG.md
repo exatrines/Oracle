@@ -7,14 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-09
+
 ### Added
 
-- Added `CONTRIBUTING.md`, synced from the shared contributing guide
+- **Timeline overlay** appearance: row width, row height, text size (px; icon size follows), background, and text color, each with a reset-to-default control. Action names can be hidden. Row direction can be left-to-right or right-to-left (right-to-left is name, time, then icon)
 
 ### Changed
 
-- README layout: centered plugin icon, English | Japanese switch, pink and white Release / Changelog / License badges, overlay combo hero, and a submodule init step for developers
-- Restored the full GNU AGPL v3 license text
+- Updated MirageUI
 
 ## [1.2.3] - 2026-09-25
 

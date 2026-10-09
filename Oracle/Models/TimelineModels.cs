@@ -51,12 +51,6 @@ public sealed class TimelineDocument
     public List<TimelineCue> Cues { get; set; } = [];
 }
 
-public enum MajorOverlayLaneMode
-{
-    Single = 0,
-    AbilityAndSkill = 1,
-}
-
 public enum TimelineCueKind
 {
     Action = 0,

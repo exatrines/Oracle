@@ -625,6 +625,4 @@ internal sealed unsafe class AutoRecordService : IDisposable
             ? I18n.Get("fflogs.title.unknown")
             : body;
     }
-
-    public uint CurrentGameSceneId => GameScene.ReadId();
 }

@@ -326,6 +326,5 @@
   "cmd.chat.overlay.timeline": "Timeline overlay",
   "cmd.chat.overlay.major": "Major overlay",
   "cmd.chat.overlay.icon": "Icon highlight",
-  "cmd.chat.unloaded": "[Oracle] Timeline unloaded.",
-  "autorecord.overlay.scene": "Scene {0}"
+  "cmd.chat.unloaded": "[Oracle] Timeline unloaded."
 }

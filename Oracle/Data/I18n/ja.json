@@ -326,6 +326,5 @@
   "cmd.chat.overlay.timeline": "タイムラインオーバーレイ",
   "cmd.chat.overlay.major": "メジャーオーバーレイ",
   "cmd.chat.overlay.icon": "アイコンハイライト",
-  "cmd.chat.unloaded": "[Oracle] タイムラインをアンロードしました。",
-  "autorecord.overlay.scene": "シーン {0}"
+  "cmd.chat.unloaded": "[Oracle] タイムラインをアンロードしました。"
 }

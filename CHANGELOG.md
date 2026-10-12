@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-10-12
+
+### Removed
+
+- AutoRecord overlay no longer shows the live scene id
+
 ## [1.3.0] - 2026-10-09
 
 ### Added

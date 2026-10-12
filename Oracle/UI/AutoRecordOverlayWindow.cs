@@ -1,4 +1,3 @@
-using Oracle.Models;
 using Oracle.Services;
 using Oracle.Services.AutoRecord;
 using MirageUI.Ui;
@@ -24,7 +23,6 @@ internal sealed class AutoRecordOverlayWindow : Window
     private const float MajorPixelsPerSecond = 30f;
     private const float MajorIconSize = 32f;
     private const float MajorZeroLineThickness = 2f;
-    private const bool MajorShowGrid = true;
 
     private static readonly Vector4 MajorBackgroundColor = new(0.05f, 0.05f, 0.05f, 0.72f);
     private static readonly Vector4 MajorGridLineColor = new(1f, 1f, 1f, 0.22f);
@@ -164,56 +162,43 @@ internal sealed class AutoRecordOverlayWindow : Window
 
     // --- status rows ---
 
-    /// <summary>Row 1: job | zone | scene · gear</summary>
     private void DrawJobZoneRow(Vector4 textPrimary, Vector4 textMuted)
     {
+        var btn = MirageUi.ResolveControlHeight();
+        if (!ImGui.BeginTable(
+                "##autoRecordJobZone",
+                2,
+                ImGuiTableFlags.SizingStretchProp | ImGuiTableFlags.NoPadOuterX,
+                new Vector2(-1f, 0f)))
+            return;
+
+        ImGui.TableSetupColumn("##text", ImGuiTableColumnFlags.WidthStretch);
+        ImGui.TableSetupColumn("##gear", ImGuiTableColumnFlags.WidthFixed, btn);
+        ImGui.TableNextRow();
+        ImGui.TableNextColumn();
+
         var job = ResolveJobLabel();
         var zone = ResolveZoneLabel();
-        var sceneText = I18n.Format("autorecord.overlay.scene", _autoRecord.CurrentGameSceneId);
         var sep = " | ";
-        var btnSize = MirageUi.ResolveControlHeight();
-        var rowMin = ImGui.GetCursorScreenPos();
-        var rowWidth = ImGui.GetContentRegionAvail().X;
-        var gap = MirageLayout.Style.ItemInnerSpacing.X;
-
         ImGui.AlignTextToFramePadding();
         MirageUi.Text(job, textPrimary, wrap: false);
         ImGui.SameLine(0f, 0f);
         MirageUi.Text(sep, textMuted, wrap: false);
         ImGui.SameLine(0f, 0f);
-
-        var used = ImGui.CalcTextSize(job).X
-                   + ImGui.CalcTextSize(sep).X
-                   + ImGui.CalcTextSize(sep).X
-                   + ImGui.CalcTextSize(sceneText).X;
-        var zoneMaxW = MathF.Max(20f, rowWidth - used - btnSize - gap);
+        var used = ImGui.CalcTextSize(job).X + ImGui.CalcTextSize(sep).X;
+        var zoneMaxW = MathF.Max(20f, ImGui.GetContentRegionAvail().X - used);
         MirageUi.Text(TruncateToWidth(zone, zoneMaxW), textPrimary, wrap: false);
         if (ImGui.IsItemHovered())
             MirageUi.Tooltip(zone);
 
-        ImGui.SameLine(0f, 0f);
-        MirageUi.Text(sep, textMuted, wrap: false);
-        ImGui.SameLine(0f, 0f);
-        MirageUi.Text(sceneText, textPrimary, wrap: false);
-
-        ImGui.SetCursorScreenPos(
-            new Vector2(
-                rowMin.X + rowWidth - btnSize,
-                rowMin.Y + (ImGui.GetFrameHeight() - btnSize) * 0.5f));
-        DrawZoneSettingsButton();
-    }
-
-    private void DrawZoneSettingsButton()
-    {
-        var btnSize = new Vector2(MirageUi.ResolveControlHeight());
-        if (!MirageUi.IconButton(
+        ImGui.TableNextColumn();
+        if (MirageUi.IconButton(
                 FontAwesomeIcon.Cog,
                 id: "autoRecordZoneSettings",
-                size: btnSize,
+                size: new Vector2(btn, btn),
                 tooltip: I18n.Get("autorecord.overlay.open_record_zones")))
-            return;
-
-        _openAutoRecordZones();
+            _openAutoRecordZones();
+        ImGui.EndTable();
     }
 
     private void DrawPendingSaveButtons()
@@ -245,7 +230,11 @@ internal sealed class AutoRecordOverlayWindow : Window
 
     private void DrawStatusAndMajorStrip(string status, Vector4 statusColor)
     {
-        ResolveAxis(out var pps, out var pastSeconds, out var futureSeconds, out var zeroX, out var width);
+        var pps = MajorPixelsPerSecond;
+        var pastSeconds = MajorPastSeconds;
+        var futureSeconds = MajorFutureSeconds;
+        var zeroX = pastSeconds * pps;
+        var width = (pastSeconds + futureSeconds) * pps;
         var iconSize = MajorIconSize;
         var elapsed = _autoRecord.SessionElapsedSecondsPrecise;
         var items = CollectStripItems(elapsed, pastSeconds, futureSeconds);
@@ -341,7 +330,7 @@ internal sealed class AutoRecordOverlayWindow : Window
         var lastSec = (int)Math.Ceiling(futureSeconds);
         for (var sec = firstSec; sec <= lastSec; sec++)
         {
-            if (sec == 0 || !MajorShowGrid)
+            if (sec == 0)
                 continue;
 
             var x = zeroLineX + sec * pps;
@@ -388,20 +377,6 @@ internal sealed class AutoRecordOverlayWindow : Window
             else
                 drawList.AddRectFilled(iconMin, iconMax, MirageUi.ToUInt(new Vector4(0.2f, 0.2f, 0.2f, 0.9f)), 3f);
         }
-    }
-
-    private static void ResolveAxis(
-        out float pps,
-        out float pastSeconds,
-        out float futureSeconds,
-        out float zeroX,
-        out float width)
-    {
-        pps = MajorPixelsPerSecond;
-        pastSeconds = MajorPastSeconds;
-        futureSeconds = MajorFutureSeconds;
-        zeroX = pastSeconds * pps;
-        width = (pastSeconds + futureSeconds) * pps;
     }
 
     // --- labels ---

@@ -8,7 +8,7 @@ internal static class FFLogsEnemySyncImport
     public static List<TimelineCue> BuildCastCues(
         FFLogsFightInfo fight,
         IReadOnlyList<FFLogsCastEvent> casts,
-        IReadOnlyList<EnemySyncSpec> specs)
+        IReadOnlyList<SyncPresetEntry> specs)
     {
         if (specs.Count == 0)
             return [];
@@ -41,7 +41,7 @@ internal static class FFLogsEnemySyncImport
     public static List<TimelineCue> BuildStatusCues(
         FFLogsFightInfo fight,
         IReadOnlyList<FFLogsStatusEvent> events,
-        IReadOnlyList<EnemySyncSpec> specs)
+        IReadOnlyList<SyncPresetEntry> specs)
     {
         if (specs.Count == 0)
             return [];

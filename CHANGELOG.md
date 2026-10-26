@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-10-26
+
+### Changed
+
+- TOP timer sync preset: P4 entry cast (`31559`) on cast complete. A saved preset is left as-is until Reset to default
+- DSR timer sync preset: P4 entry cast (`29050`) on cast complete replaces Resentment (`26810`). P6 entry cast (`26215`) on cast complete replaces Wroth Flames (`27973`). A saved preset is left as-is until Reset to default
+
 ## [1.3.1] - 2026-10-12
 
 ### Removed

@@ -47,7 +47,7 @@ internal static class SyncPresetSettingsUi
         DrawDraftRow(presetId, rows, tableWidth);
     }
 
-    private static void DrawExisting(string presetId, List<EnemySyncSpec> rows, float tableWidth)
+    private static void DrawExisting(string presetId, List<SyncPresetEntry> rows, float tableWidth)
     {
         if (rows.Count == 0)
         {
@@ -70,7 +70,12 @@ internal static class SyncPresetSettingsUi
             var effected = spec.Effected;
             if (SyncCueFields.DrawRow(ref syncType, ref actionId, ref effected, "row"))
             {
-                rows[i] = new EnemySyncSpec(syncType, actionId, effected);
+                rows[i] = new SyncPresetEntry
+                {
+                    SyncType = syncType,
+                    ActionId = actionId,
+                    Effected = effected,
+                };
                 EnemySyncPresets.Save(presetId, rows);
             }
 
@@ -94,7 +99,7 @@ internal static class SyncPresetSettingsUi
         ImGui.EndTable();
     }
 
-    private static void DrawDraftRow(string presetId, List<EnemySyncSpec> rows, float tableWidth)
+    private static void DrawDraftRow(string presetId, List<SyncPresetEntry> rows, float tableWidth)
     {
         if (!PresetZoneListUi.BeginRowTable("##syncPresetDraft", tableWidth))
             return;
@@ -118,7 +123,12 @@ internal static class SyncPresetSettingsUi
                 enabled: canSubmit)
             && canSubmit)
         {
-            rows.Add(new EnemySyncSpec(_draftSyncType, _draftActionId, _draftEffected));
+            rows.Add(new SyncPresetEntry
+            {
+                SyncType = _draftSyncType,
+                ActionId = _draftActionId,
+                Effected = _draftEffected,
+            });
             EnemySyncPresets.Save(presetId, rows);
             ResetDraft(presetId);
         }

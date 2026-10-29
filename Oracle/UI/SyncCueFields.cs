@@ -65,7 +65,7 @@ internal static class SyncCueFields
     {
         var dirty = false;
         var gap = ImGui.GetStyle().ItemSpacing.X;
-        if (DrawTypeDropdown(ref syncType, idPrefix + "Type"))
+        if (DrawTypeDropdown(ref syncType, idPrefix + "Type", TypeWidth))
         {
             actionId = 0;
             effected = false;
@@ -74,26 +74,33 @@ internal static class SyncCueFields
 
         var isStatus = syncType == EnemySyncType.Status;
         ImGui.SameLine(0f, gap);
-        if (isStatus)
-        {
-            if (DrawStatusPicker(ref actionId, idPrefix + "Status"))
-                dirty = true;
-        }
-        else if (DrawCastPicker(ref actionId, idPrefix + "Action"))
-        {
+        var pickerWidth = Math.Max(40f, ImGui.GetContentRegionAvail().X - EdgeWidth - gap);
+        if (DrawNameField(ref actionId, syncType, idPrefix + (isStatus ? "Status" : "Action"), pickerWidth))
             dirty = true;
-        }
 
         ImGui.SameLine(0f, gap);
-        if (DrawEdgeDropdown(ref effected, idPrefix + "Edge", isStatus))
+        if (DrawEdgeDropdown(ref effected, idPrefix + "Edge", isStatus, EdgeWidth))
             dirty = true;
 
         return dirty;
     }
 
-    private static bool DrawCastPicker(ref uint actionId, string id)
+    public static bool DrawTypeField(ref EnemySyncType syncType, string id) =>
+        DrawTypeDropdown(ref syncType, id, MirageUi.InputWidthFill);
+
+    public static bool DrawNameField(ref uint actionId, EnemySyncType syncType, string id) =>
+        DrawNameField(ref actionId, syncType, id, MirageUi.InputWidthFill);
+
+    public static bool DrawEdgeField(ref bool effected, EnemySyncType syncType, string id) =>
+        DrawEdgeDropdown(ref effected, id, syncType == EnemySyncType.Status, MirageUi.InputWidthFill);
+
+    private static bool DrawNameField(ref uint actionId, EnemySyncType syncType, string id, float width) =>
+        syncType == EnemySyncType.Status
+            ? DrawStatusPicker(ref actionId, id, width)
+            : DrawCastPicker(ref actionId, id, width);
+
+    private static bool DrawCastPicker(ref uint actionId, string id, float pickerWidth)
     {
-        var pickerWidth = Math.Max(40f, ImGui.GetContentRegionAvail().X - EdgeWidth - ImGui.GetStyle().ItemSpacing.X);
         var selected = EnemySyncCatalog.FormatCastLabel(actionId);
         var items = EnemySyncCatalog.CastLabelsForPicker(actionId);
         if (!MirageUi.SearchableDropdown(
@@ -114,9 +121,8 @@ internal static class SyncCueFields
         return true;
     }
 
-    private static bool DrawStatusPicker(ref uint statusId, string id)
+    private static bool DrawStatusPicker(ref uint statusId, string id, float pickerWidth)
     {
-        var pickerWidth = Math.Max(40f, ImGui.GetContentRegionAvail().X - EdgeWidth - ImGui.GetStyle().ItemSpacing.X);
         var selected = EnemySyncCatalog.FormatStatusLabel(statusId);
         var items = EnemySyncCatalog.StatusLabelsForPicker(statusId);
         if (!MirageUi.SearchableDropdown(
@@ -150,7 +156,7 @@ internal static class SyncCueFields
         MirageUi.Text(edge, wrap: false);
     }
 
-    private static bool DrawTypeDropdown(ref EnemySyncType syncType, string id)
+    private static bool DrawTypeDropdown(ref EnemySyncType syncType, string id, float width)
     {
         var label = SyncTypeLabel(syncType);
         if (!MirageUi.Dropdown(
@@ -159,7 +165,7 @@ internal static class SyncCueFields
                 SyncTypeLabels,
                 id: id,
                 allowClear: false,
-                width: TypeWidth))
+                width: width))
             return false;
 
         syncType = string.Equals(label, I18n.Get("config.cue.sync_type.status"), StringComparison.Ordinal)
@@ -168,7 +174,7 @@ internal static class SyncCueFields
         return true;
     }
 
-    private static bool DrawEdgeDropdown(ref bool effected, string id, bool isStatus)
+    private static bool DrawEdgeDropdown(ref bool effected, string id, bool isStatus, float width)
     {
         var label = isStatus ? StatusEdgeLabel(effected) : CastEdgeLabel(effected);
         var items = isStatus ? StatusEdgeLabels : CastEdgeLabels;
@@ -178,7 +184,7 @@ internal static class SyncCueFields
                 items,
                 id: id,
                 allowClear: false,
-                width: EdgeWidth))
+                width: width))
             return false;
 
         effected = isStatus

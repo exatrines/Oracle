@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-10-29
+
+### Changed
+
+- Adopted the latest MirageUI design
+
+### Fixed
+
+- AutoRecord overlay opens again after it was closed, on the next enabled-zone entry or when a manual save is waiting. It stays closed for the rest of that visit, hides after leaving a record zone unless recording or waiting to save, and hides when AutoRecord is turned off
+
 ## [1.3.2] - 2026-10-26
 
 ### Changed

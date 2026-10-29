@@ -20,11 +20,14 @@ internal sealed partial class ConfigWindow : Window
     private readonly ActionSearchWindow _actionSearch;
     private readonly FFLogsImportPanel _ffLogsImport;
     private readonly AutoRecordImportPanel _autoRecordImport;
-    private readonly Action _openPluginSettings;
-    private readonly string _pluginIconPath;
+    private readonly PluginSettingsWindow _settings = new();
 
     private string _selectedTabId = string.Empty;
+    private bool _chromeCollapsed;
+    private bool _railCollapsed;
+    private string _pageId = OracleWindowChrome.MainPageId;
     private string _sidebarSearch = string.Empty;
+    private bool _sidebarCollapsed;
     private string? _entryReorderDragId;
     private readonly HashSet<string> _collapsedFolderIds = new(StringComparer.Ordinal);
     private ImRaii.ColorDisposable? _themeScope;
@@ -59,40 +62,24 @@ internal sealed partial class ConfigWindow : Window
     /// <summary>Sidebar tint for the timeline currently loaded by the engine (auto or manual).</summary>
     private static readonly Vector4 StandbyMatchGreen = new(0.45f, 0.85f, 0.45f, 1f);
 
-    private const float CueActionIconSize = 22f;
+    private static float CueActionIconSize => MirageUi.ResolveControlHeight();
 
     public ConfigWindow(
         TimelineStore store,
         TimelineEngine engine,
         ActionSearchWindow actionSearch,
         FFLogsImportPanel ffLogsImport,
-        AutoRecordImportPanel autoRecordImport,
-        Action openPluginSettings)
-        : base("Oracle###oracleTimelineConfig", ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
+        AutoRecordImportPanel autoRecordImport)
+        : base("Oracle###oracleTimelineConfig", ImGuiWindowFlags.NoDecoration)
     {
         _store = store;
         _engine = engine;
         _actionSearch = actionSearch;
         _ffLogsImport = ffLogsImport;
         _autoRecordImport = autoRecordImport;
-        _openPluginSettings = openPluginSettings;
-        _pluginIconPath = ResolvePluginIconPath();
-        MirageWindowDefaults.ApplyTo(this);
-        // Sidebar + wide main (meta split + cue table).
-        Size = new Vector2(1100f, 630f);
-        SizeConstraints = new()
-        {
-            MinimumSize = Size.Value,
-            MaximumSize = Size.Value,
-        };
+        AllowBackgroundBlur = false;
+        OracleWindowChrome.ApplyFixedSize(this, collapsed: false, new Vector2(1100f, 630f));
         EnsureDefaultSelection();
-    }
-
-    private static string ResolvePluginIconPath()
-    {
-        var dir = PluginServices.PluginInterface.AssemblyLocation.DirectoryName
-                  ?? AppContext.BaseDirectory;
-        return Path.Combine(dir, "Data", "plugin-icon.png");
     }
 
     private void EnsureDefaultSelection()
@@ -112,13 +99,14 @@ internal sealed partial class ConfigWindow : Window
     public override void PreDraw()
     {
         WindowName = I18n.Get("window.config.title") + "###oracleTimelineConfig";
+        OracleWindowChrome.ApplyFixedSize(this, _chromeCollapsed, new Vector2(1100f, 630f));
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
-        MirageTheme.EnsureDefaultsCaptured();
         _themeScope = MirageTheme.PushCustom(MirageTheme.ResolveAppliedColors());
     }
 
     public override void PostDraw()
     {
+        MirageWindowCapture.Copy();
         MirageTheme.Pop(_themeScope);
         _themeScope = null;
         ImGui.PopStyleVar();
@@ -127,7 +115,71 @@ internal sealed partial class ConfigWindow : Window
     public override void Draw()
     {
         EnsureDefaultSelection();
-        MirageUi.TwoColumn.Draw(CreateTimelineTwoColumnState(), DrawMainContent);
+        var title = I18n.Get("window.config.title");
+        MirageWindowHeader.Section[] sections =
+        [
+            new(OracleWindowChrome.MainPageId, I18n.Get("rail.timelines"), FontAwesomeIcon.List),
+            new(OracleWindowChrome.SettingsPageId, I18n.Get("rail.settings"), FontAwesomeIcon.Cog),
+        ];
+        OracleWindowChrome.Draw(
+            this,
+            title,
+            ref _chromeCollapsed,
+            ref _railCollapsed,
+            ref _pageId,
+            sections,
+            OracleWindowChrome.MainWindowFeatures());
+        if (_chromeCollapsed)
+            return;
+
+        if (OracleWindowChrome.IsPluginPage(_pageId))
+        {
+            MirageUi.DrawPluginPage();
+            return;
+        }
+
+        if (_pageId == MirageWindowHeader.LanguagePageId)
+        {
+            LanguagePage.Draw();
+            return;
+        }
+
+        if (_pageId == MirageWindowHeader.ThemePageId)
+        {
+            ThemePage.Draw();
+            return;
+        }
+
+        if (_pageId == OracleWindowChrome.SettingsPageId)
+        {
+            _settings.Draw();
+            return;
+        }
+
+        var timeline = CreateTimelineTwoColumnState();
+        MirageUi.TwoColumn.Draw(timeline, DrawMainContent);
+        _sidebarCollapsed = timeline.SidebarCollapsed;
+    }
+
+    public void TogglePage(string pageId)
+    {
+        if (IsOpen && _pageId == pageId && !_chromeCollapsed)
+        {
+            IsOpen = false;
+            return;
+        }
+
+        _pageId = pageId;
+        _chromeCollapsed = false;
+        IsOpen = true;
+    }
+
+    public void ShowAutoRecordSettings()
+    {
+        _settings.ShowAutoRecordPage();
+        _pageId = OracleWindowChrome.SettingsPageId;
+        _chromeCollapsed = false;
+        IsOpen = true;
     }
 
     private void DrawMainContent()

@@ -25,6 +25,7 @@ internal sealed class ActionSearchWindow : Window
     private IReadOnlyList<JobActionInfo> _actions = [];
     private uint _highlightActionId;
     private readonly HashSet<uint> _selected = [];
+    private bool _chromeCollapsed;
     private ImRaii.ColorDisposable? _themeScope;
 
     public ActionSearchWindow(
@@ -36,7 +37,7 @@ internal sealed class ActionSearchWindow : Window
         Action<JobActionInfo> onPicked)
         : base(
             "Select action###oracleActionSearch",
-            ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
+            ImGuiWindowFlags.NoDecoration)
     {
         _getClassJobId = getClassJobId;
         _setClassJobId = setClassJobId;
@@ -44,16 +45,8 @@ internal sealed class ActionSearchWindow : Window
         _getContentFinderConditionId = getContentFinderConditionId;
         _getClassJobLevel = getClassJobLevel;
         _onPicked = onPicked;
-        MirageWindowDefaults.ApplyTo(this);
-
-        // Match Mirage two-column right (main) panel: full default width minus sidebar.
-        var size = ResolveMainPanelSize();
-        Size = size;
-        SizeConstraints = new()
-        {
-            MinimumSize = size,
-            MaximumSize = size,
-        };
+        AllowBackgroundBlur = false;
+        OracleWindowChrome.ApplyFixedSize(this, collapsed: false, ResolveMainPanelSize());
     }
 
     /// <summary>Optional current cue action to highlight when the window opens.</summary>
@@ -77,13 +70,14 @@ internal sealed class ActionSearchWindow : Window
     public override void PreDraw()
     {
         WindowName = I18n.Get("window.action_search.title") + "###oracleActionSearch";
+        OracleWindowChrome.ApplyFixedSize(this, _chromeCollapsed, ResolveMainPanelSize());
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
-        MirageTheme.EnsureDefaultsCaptured();
         _themeScope = MirageTheme.PushCustom(MirageTheme.ResolveAppliedColors());
     }
 
     public override void PostDraw()
     {
+        MirageWindowCapture.Copy();
         MirageTheme.Pop(_themeScope);
         _themeScope = null;
         ImGui.PopStyleVar();
@@ -91,12 +85,15 @@ internal sealed class ActionSearchWindow : Window
 
     public override void Draw()
     {
+        var title = I18n.Get("window.action_search.title");
+        OracleWindowChrome.Draw(this, title, ref _chromeCollapsed);
+        if (_chromeCollapsed)
+            return;
+
         MirageUi.TwoColumn.Draw(
             new MirageTwoColumnState
             {
                 ShowSidebar = false,
-                ShowSidebarHeader = false,
-                ShowSidebarFooter = false,
                 ShowSearch = false,
             },
             DrawContent);
@@ -108,7 +105,6 @@ internal sealed class ActionSearchWindow : Window
     {
         RefreshCache(force: false);
 
-        MirageUi.Header(I18n.Get("action_search.header"));
         DrawJobAndFilterTable();
         DrawActionList();
     }
@@ -170,20 +166,28 @@ internal sealed class ActionSearchWindow : Window
 
     private void DrawCategoryDropdown()
     {
-        var preview = FormatCategoryPreview();
-        var hasValue = _showAction || _showAbility || _showRole;
-        if (!MirageUi.BeginDropdown(
+        var action = I18n.Get("kind.action");
+        var ability = I18n.Get("kind.ability");
+        var role = I18n.Get("kind.role");
+        var selected = new HashSet<string>();
+        if (_showAction)
+            selected.Add(action);
+        if (_showAbility)
+            selected.Add(ability);
+        if (_showRole)
+            selected.Add(role);
+
+        if (!MirageUi.MultiSelectDropdown(
                 string.Empty,
-                preview,
-                id: "actionKindFilter",
-                width: MirageUi.InputWidthFill,
-                hasValue: hasValue))
+                FormatCategoryPreview(),
+                [action, ability, role],
+                selected,
+                id: "actionKindFilter"))
             return;
 
-        MirageUi.Checkbox(I18n.Get("kind.action"), ref _showAction);
-        MirageUi.Checkbox(I18n.Get("kind.ability"), ref _showAbility);
-        MirageUi.Checkbox(I18n.Get("kind.role"), ref _showRole);
-        MirageUi.EndDropdown();
+        _showAction = selected.Contains(action);
+        _showAbility = selected.Contains(ability);
+        _showRole = selected.Contains(role);
     }
 
     private string FormatCategoryPreview()
@@ -302,7 +306,7 @@ internal sealed class ActionSearchWindow : Window
     {
         var sidebarWidth = new MirageTwoColumnState().SidebarWidth;
         return new Vector2(
-            MirageWindowDefaults.DefaultSize.X - sidebarWidth,
-            MirageWindowDefaults.DefaultSize.Y);
+            OracleWindowChrome.DefaultSize.X - sidebarWidth,
+            OracleWindowChrome.DefaultSize.Y);
     }
 }

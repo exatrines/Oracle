@@ -36,7 +36,6 @@ internal static class AutoLoadPresetSettingsUi
         EnsureDraft(presetId);
         var entry = AutoLoadPresets.Resolve(presetId);
         var ids = entry?.DataIds ?? [];
-        var tableWidth = Math.Max(1f, ImGui.GetContentRegionAvail().X);
         var live = BossPresence.LiveLabelsSorted();
         if (live.Count == 0)
             MirageUi.Text(I18n.Get("settings.autoload_presets.live_none"), MirageUi.Color.Secondary);
@@ -48,64 +47,51 @@ internal static class AutoLoadPresetSettingsUi
         if (ids.Count == 0)
             MirageUi.Text(I18n.Get("settings.autoload_presets.empty"), MirageUi.Color.Secondary);
 
-        DrawDataIdRows(presetId, ids, tableWidth);
-        DrawDataIdDraft(presetId, ids, tableWidth);
+        MirageUi.Table.Draw(
+            "##autoLoadDataIds",
+            DataIdColumns(),
+            ids.Count,
+            index => DrawDataIdRow(presetId, ids, index),
+            () => DrawDataIdDraft(presetId, ids));
     }
 
-    private static void DrawDataIdRows(string presetId, List<uint> ids, float tableWidth)
+    private static bool DrawDataIdRow(string presetId, List<uint> ids, int index)
     {
-        if (ids.Count == 0)
-            return;
-
-        if (!PresetZoneListUi.BeginRowTable("##autoLoadDataIds", tableWidth))
-            return;
-
-        for (var i = 0; i < ids.Count; i++)
+        ImGui.PushID(index);
+        MirageUi.Table.NextColumn();
+        var edit = (int)ids[index];
+        if (MirageUi.InputInt(
+                string.Empty,
+                ref edit,
+                step: 0,
+                stepFast: 0,
+                id: "dataId",
+                width: MirageUi.InputWidthFill))
         {
-            ImGui.PushID(i);
-            ImGui.TableNextRow();
-            ImGui.TableNextColumn();
-            var edit = (int)ids[i];
-            if (MirageUi.InputInt(
-                    string.Empty,
-                    ref edit,
-                    step: 0,
-                    stepFast: 0,
-                    id: "dataId",
-                    width: Math.Max(40f, ImGui.GetContentRegionAvail().X)))
-            {
-                ids[i] = (uint)Math.Max(0, edit);
-                AutoLoadPresets.Save(presetId, ids);
-            }
-
-            ImGui.TableNextColumn();
-            if (MirageUi.IconButton(
-                    FontAwesomeIcon.Trash,
-                    "##deleteDataId",
-                    size: default,
-                    tooltip: I18n.Get("config.cue.tooltip.delete_row")))
-            {
-                ids.RemoveAt(i);
-                AutoLoadPresets.Save(presetId, ids);
-                ImGui.PopID();
-                ImGui.EndTable();
-                return;
-            }
-
-            ImGui.PopID();
+            ids[index] = (uint)Math.Max(0, edit);
+            AutoLoadPresets.Save(presetId, ids);
         }
 
-        ImGui.EndTable();
+        MirageUi.Table.NextColumn();
+        var deleted = MirageUi.IconButton(
+            FontAwesomeIcon.Trash,
+            "##deleteDataId",
+            size: default,
+            tooltip: I18n.Get("config.cue.tooltip.delete_row"));
+        if (deleted)
+        {
+            ids.RemoveAt(index);
+            AutoLoadPresets.Save(presetId, ids);
+        }
+
+        ImGui.PopID();
+        return deleted;
     }
 
-    private static void DrawDataIdDraft(string presetId, List<uint> ids, float tableWidth)
+    private static void DrawDataIdDraft(string presetId, List<uint> ids)
     {
-        if (!PresetZoneListUi.BeginRowTable("##autoLoadDataIdDraft", tableWidth))
-            return;
-
         ImGui.PushID("##autoLoadDataIdDraft");
-        ImGui.TableNextRow();
-        ImGui.TableNextColumn();
+        MirageUi.Table.NextColumn();
         var draft = (int)_draftDataId;
         if (MirageUi.InputInt(
                 string.Empty,
@@ -113,10 +99,10 @@ internal static class AutoLoadPresetSettingsUi
                 step: 0,
                 stepFast: 0,
                 id: "draftDataId",
-                width: Math.Max(40f, ImGui.GetContentRegionAvail().X)))
+                width: MirageUi.InputWidthFill))
             _draftDataId = (uint)Math.Max(0, draft);
 
-        ImGui.TableNextColumn();
+        MirageUi.Table.NextColumn();
         var canSubmit = _draftDataId != 0;
         if (MirageUi.IconButton(
                 FontAwesomeIcon.ArrowUpFromBracket,
@@ -132,8 +118,13 @@ internal static class AutoLoadPresetSettingsUi
         }
 
         ImGui.PopID();
-        ImGui.EndTable();
     }
+
+    private static MirageTableColumn[] DataIdColumns() =>
+    [
+        new() { Label = I18n.Get("settings.autoload_presets.col.data_id"), Width = 160f, Stretch = true },
+        new() { Width = MirageUi.ResolveControlHeight() + 6f },
+    ];
 
     private static void EnsureDraft(string presetId)
     {

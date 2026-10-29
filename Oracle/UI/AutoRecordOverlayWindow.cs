@@ -4,55 +4,51 @@ using MirageUI.Ui;
 
 namespace Oracle.UI;
 
-/// <summary>
-/// Auto Record status window (standard ImGui title bar: drag / collapse / close).
-/// Draw order: sync layout state, status rows, then the horizontal major action strip.
-/// </summary>
+/// <summary>Auto Record status window. Mirage title bar, no rail.</summary>
 internal sealed class AutoRecordOverlayWindow : Window
 {
     private readonly AutoRecordService _autoRecord;
-    private readonly Action _openAutoRecordZones;
+    private readonly Action _openAutoRecordSettings;
     private ImRaii.ColorDisposable? _themeScope;
-    private int _pushedTitleColors;
+    private bool _collapsed;
 
     private const float PanelWidth = 280f;
+    private const float ContentPad = 8f;
     private const float MajorVerticalPadding = 8f;
     private const float MajorBarRounding = 6f;
-    private const float MajorPastSeconds = 7.4f;
-    private const float MajorFutureSeconds = 1.4f;
-    private const float MajorPixelsPerSecond = 30f;
-    private const float MajorIconSize = 32f;
-    private const float MajorZeroLineThickness = 2f;
-
-    private static readonly Vector4 MajorBackgroundColor = new(0.05f, 0.05f, 0.05f, 0.72f);
-    private static readonly Vector4 MajorGridLineColor = new(1f, 1f, 1f, 0.22f);
-    private static readonly Vector4 MajorZeroLineColor = new(0.2f, 0.95f, 0.35f, 1f);
 
     private const ImGuiWindowFlags OverlayFlags =
-        ImGuiWindowFlags.AlwaysAutoResize
+        ImGuiWindowFlags.NoDecoration
+        | ImGuiWindowFlags.AlwaysAutoResize
         | ImGuiWindowFlags.NoFocusOnAppearing
         | ImGuiWindowFlags.NoNav
         | ImGuiWindowFlags.NoDocking
-        | ImGuiWindowFlags.NoSavedSettings
-        | ImGuiWindowFlags.NoScrollbar
-        | ImGuiWindowFlags.NoScrollWithMouse;
+        | ImGuiWindowFlags.NoSavedSettings;
 
     public AutoRecordOverlayWindow(
         AutoRecordService autoRecord,
-        Action openAutoRecordZones)
+        Action openAutoRecordSettings)
         : base("Oracle AutoRecord##oracleAutoRecordOverlay", OverlayFlags, forceMainWindow: true)
     {
         _autoRecord = autoRecord;
-        _openAutoRecordZones = openAutoRecordZones;
-        IsOpen = true;
+        _openAutoRecordSettings = openAutoRecordSettings;
+        _collapsed = C.AutoRecordOverlayCollapsed;
         RespectCloseHotkey = false;
         DisableWindowSounds = true;
+        AllowBackgroundBlur = false;
     }
 
     public override void OnClose()
     {
         C.AutoRecordOverlayVisible = false;
         C.Save();
+    }
+
+    public void ApplyOpenState()
+    {
+        IsOpen = PluginServices.ClientState.IsLoggedIn
+                 && C.AutoRecordEnabled
+                 && C.AutoRecordOverlayVisible;
     }
 
     public override bool DrawConditions() =>
@@ -62,82 +58,72 @@ internal sealed class AutoRecordOverlayWindow : Window
 
     public override void PreDraw()
     {
-        IsOpen = PluginServices.ClientState.IsLoggedIn
-                 && C.AutoRecordEnabled
-                 && C.AutoRecordOverlayVisible;
         WindowName = I18n.Get("window.autorecord_overlay.title") + "##oracleAutoRecordOverlay";
 
-        var panelW = PanelWidth;
         // Appearing only; Always would cancel title-bar dragging.
         ImGui.SetNextWindowPos(
             new Vector2(C.AutoRecordOverlayPosX, C.AutoRecordOverlayPosY),
             ImGuiCond.Appearing);
-        ImGui.SetNextWindowCollapsed(C.AutoRecordOverlayCollapsed, ImGuiCond.Appearing);
-        ImGui.SetNextWindowSizeConstraints(
-            new Vector2(panelW, 0f),
-            new Vector2(panelW, float.MaxValue));
+        ImGui.SetNextWindowSize(new Vector2(PanelWidth, 160f), ImGuiCond.Appearing);
 
-        MirageTheme.EnsureDefaultsCaptured();
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
         _themeScope = MirageTheme.PushCustom(MirageTheme.ResolveAppliedColors());
-
-        _pushedTitleColors = 0;
-        if (_autoRecord.IsRecording || _autoRecord.HasPendingSave)
-        {
-            var theme = MirageTheme.ResolveAppliedColors();
-            var warning = MirageUi.GetColor(MirageUi.Color.Warning);
-            var title = MirageUi.MixColors(theme.TitleBg, warning, 0.35f);
-            ImGui.PushStyleColor(ImGuiCol.TitleBg, title);
-            ImGui.PushStyleColor(ImGuiCol.TitleBgActive, MirageUi.MixColors(title, warning, 0.15f));
-            _pushedTitleColors = 2;
-        }
     }
 
     public override void PostDraw()
     {
-        if (_pushedTitleColors > 0)
-        {
-            ImGui.PopStyleColor(_pushedTitleColors);
-            _pushedTitleColors = 0;
-        }
-
+        MirageWindowCapture.Copy();
         MirageTheme.Pop(_themeScope);
         _themeScope = null;
+        ImGui.PopStyleVar();
     }
 
     public override void Draw()
     {
-        SyncWindowStateToConfig();
-        if (ImGui.IsWindowCollapsed())
-            return;
-
-        var recording = _autoRecord.IsRecording;
-        var pending = _autoRecord.HasPendingSave;
-        var blocked = !_autoRecord.IsCurrentZoneEnabled;
-
-        var textPrimary = MirageUi.GetColor(MirageUi.Color.Default);
-        var textMuted = MirageUi.GetColor(MirageUi.Color.Secondary);
-        var warning = MirageUi.GetColor(MirageUi.Color.Warning);
-
-        DrawJobZoneRow(textPrimary, textMuted);
-        DrawStatusAndMajorStrip(
-            FormatStatusText(recording, pending, blocked),
-            recording || pending || blocked ? warning : textMuted);
-
-        if (pending)
-            DrawPendingSaveButtons();
-    }
-
-    // --- window state ---
-
-    private void SyncWindowStateToConfig()
-    {
-        var collapsed = ImGui.IsWindowCollapsed();
-        if (collapsed != C.AutoRecordOverlayCollapsed)
+        var collapsed = _collapsed;
+        var title = I18n.Get("window.autorecord_overlay.title");
+        ImGui.SetCursorPos(Vector2.Zero);
+        ImGui.Dummy(new Vector2(PanelWidth, collapsed ? MirageWindowHeader.BarHeight : 1f));
+        OracleWindowChrome.Draw(this, title, ref collapsed);
+        if (collapsed != _collapsed)
         {
+            _collapsed = collapsed;
             C.AutoRecordOverlayCollapsed = collapsed;
             C.Save();
         }
 
+        SyncWindowPosition();
+        if (collapsed)
+            return;
+
+        var contentW = PanelWidth - ContentPad * 2f;
+        ImGui.SetCursorPos(new Vector2(ContentPad, MirageWindowHeader.BarHeight + ContentPad));
+
+        var recording = _autoRecord.IsRecording;
+        var pending = _autoRecord.HasPendingSave;
+        var blocked = !_autoRecord.IsCurrentZoneEnabled;
+        var textPrimary = MirageUi.GetColor(MirageUi.Color.Default);
+        var textMuted = MirageUi.GetColor(MirageUi.Color.Secondary);
+        var warning = MirageUi.GetColor(MirageUi.Color.Warning);
+
+        DrawJobZoneRow(textPrimary, textMuted, contentW);
+        ImGui.SetCursorPosX(ContentPad);
+        DrawStatusAndMajorStrip(
+            _autoRecord.OverlayStatusText(),
+            recording || pending || blocked ? warning : textMuted,
+            contentW);
+
+        if (pending)
+            DrawPendingSaveButtons(contentW);
+
+        ImGui.SetCursorPos(new Vector2(0f, ImGui.GetCursorPosY() + ContentPad));
+        ImGui.Dummy(new Vector2(PanelWidth, 1f));
+    }
+
+    // --- window state ---
+
+    private void SyncWindowPosition()
+    {
         var pos = ImGui.GetWindowPos();
         if (Math.Abs(pos.X - C.AutoRecordOverlayPosX) <= 0.5f
             && Math.Abs(pos.Y - C.AutoRecordOverlayPosY) <= 0.5f)
@@ -149,27 +135,16 @@ internal sealed class AutoRecordOverlayWindow : Window
             C.Save();
     }
 
-    private string FormatStatusText(bool recording, bool pending, bool blocked)
-    {
-        if (recording)
-            return I18n.Format("autorecord.overlay.recording_clock", _autoRecord.SessionElapsedSeconds);
-        if (pending)
-            return I18n.Get("autorecord.overlay.status_pending_save");
-        if (blocked)
-            return I18n.Get("autorecord.overlay.status_zone_disabled");
-        return I18n.Get("autorecord.overlay.status_stopped");
-    }
-
     // --- status rows ---
 
-    private void DrawJobZoneRow(Vector4 textPrimary, Vector4 textMuted)
+    private void DrawJobZoneRow(Vector4 textPrimary, Vector4 textMuted, float width)
     {
         var btn = MirageUi.ResolveControlHeight();
         if (!ImGui.BeginTable(
                 "##autoRecordJobZone",
                 2,
                 ImGuiTableFlags.SizingStretchProp | ImGuiTableFlags.NoPadOuterX,
-                new Vector2(-1f, 0f)))
+                new Vector2(width, 0f)))
             return;
 
         ImGui.TableSetupColumn("##text", ImGuiTableColumnFlags.WidthStretch);
@@ -196,17 +171,16 @@ internal sealed class AutoRecordOverlayWindow : Window
                 FontAwesomeIcon.Cog,
                 id: "autoRecordZoneSettings",
                 size: new Vector2(btn, btn),
-                tooltip: I18n.Get("autorecord.overlay.open_record_zones")))
-            _openAutoRecordZones();
+                tooltip: I18n.Get("autorecord.overlay.open_settings")))
+            _openAutoRecordSettings();
         ImGui.EndTable();
     }
 
-    private void DrawPendingSaveButtons()
+    private void DrawPendingSaveButtons(float width)
     {
         MirageLayout.Cursor.Y += MirageLayout.Style.ItemSpacing.Y;
         var gap = MirageLayout.Style.ItemInnerSpacing.X;
-        var avail = ImGui.GetContentRegionAvail().X;
-        var btnW = MathF.Max(60f, (avail - gap) * 0.5f);
+        var btnW = MathF.Max(60f, (width - gap) * 0.5f);
 
         if (MirageUi.PrimaryButton(
                 I18n.Get("autorecord.overlay.button_save"),
@@ -228,14 +202,10 @@ internal sealed class AutoRecordOverlayWindow : Window
 
     // --- status + major strip as one block ---
 
-    private void DrawStatusAndMajorStrip(string status, Vector4 statusColor)
+    private void DrawStatusAndMajorStrip(string status, Vector4 statusColor, float width)
     {
-        var pps = MajorPixelsPerSecond;
-        var pastSeconds = MajorPastSeconds;
-        var futureSeconds = MajorFutureSeconds;
-        var zeroX = pastSeconds * pps;
-        var width = (pastSeconds + futureSeconds) * pps;
-        var iconSize = MajorIconSize;
+        ResolveCenteredAxis(width, out var pps, out var pastSeconds, out var futureSeconds, out var zeroX);
+        var iconSize = Math.Clamp(C.MajorIconSize, 12f, 96f);
         var elapsed = _autoRecord.SessionElapsedSecondsPrecise;
         var items = CollectStripItems(elapsed, pastSeconds, futureSeconds);
 
@@ -258,7 +228,7 @@ internal sealed class AutoRecordOverlayWindow : Window
         var zeroLineX = barMin.X + zeroX;
         var dl = ImGui.GetWindowDrawList();
 
-        dl.AddRectFilled(barMin, barMax, MirageUi.ToUInt(MajorBackgroundColor), MajorBarRounding);
+        dl.AddRectFilled(barMin, barMax, ImGui.ColorConvertFloat4ToU32(C.MajorBackgroundColor), MajorBarRounding);
         dl.AddText(
             new Vector2(barMin.X + statusPadX, statusY),
             MirageUi.ToUInt(statusColor),
@@ -324,7 +294,7 @@ internal sealed class AutoRecordOverlayWindow : Window
         float pastSeconds,
         float futureSeconds)
     {
-        var gridColor = MirageUi.ToUInt(MajorGridLineColor);
+        var gridColor = ImGui.ColorConvertFloat4ToU32(C.MajorGridLineColor);
 
         var firstSec = (int)Math.Floor(-pastSeconds);
         var lastSec = (int)Math.Ceiling(futureSeconds);
@@ -344,11 +314,11 @@ internal sealed class AutoRecordOverlayWindow : Window
                 1f);
         }
 
-        var zeroThickness = Math.Max(1f, MajorZeroLineThickness);
+        var zeroThickness = Math.Max(1f, C.MajorZeroLineThickness);
         drawList.AddLine(
             new Vector2(zeroLineX, areaTop),
             new Vector2(zeroLineX, trackBottom),
-            MirageUi.ToUInt(MajorZeroLineColor),
+            ImGui.ColorConvertFloat4ToU32(C.MajorZeroLineColor),
             zeroThickness);
     }
 
@@ -377,6 +347,21 @@ internal sealed class AutoRecordOverlayWindow : Window
             else
                 drawList.AddRectFilled(iconMin, iconMax, MirageUi.ToUInt(new Vector4(0.2f, 0.2f, 0.2f, 0.9f)), 3f);
         }
+    }
+
+    /// <summary>Fit the Major pixels-per-second into the panel, with 0 at the center.</summary>
+    private static void ResolveCenteredAxis(
+        float width,
+        out float pps,
+        out float pastSeconds,
+        out float futureSeconds,
+        out float zeroX)
+    {
+        pps = Math.Max(4f, C.MajorPixelsPerSecond);
+        zeroX = width * 0.5f;
+        var seconds = zeroX / pps;
+        pastSeconds = seconds;
+        futureSeconds = seconds;
     }
 
     // --- labels ---

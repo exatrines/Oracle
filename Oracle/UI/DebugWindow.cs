@@ -12,39 +12,82 @@ internal sealed class DebugWindow : Window
 
     private readonly TimelineEngine _engine;
     private readonly HotbarHighlightService _hotbarHighlight;
+    private bool _chromeCollapsed;
+    private bool _railCollapsed;
+    private string _pageId = OracleWindowChrome.MainPageId;
+    private bool _restoreExpandedSize;
+    private Vector2 _expandedSize = new(900f, 640f);
     private ImRaii.ColorDisposable? _themeScope;
 
     public DebugWindow(TimelineEngine engine, HotbarHighlightService hotbarHighlight)
-        : base("Oracle Debug###oracleDebug")
+        : base("Oracle Debug###oracleDebug", ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoSavedSettings)
     {
         _engine = engine;
         _hotbarHighlight = hotbarHighlight;
-        MirageWindowDefaults.ApplyTo(this);
-        Flags &= ~ImGuiWindowFlags.NoResize;
-        Flags |= ImGuiWindowFlags.NoSavedSettings;
-        Size = new Vector2(900f, 640f);
+        AllowBackgroundBlur = false;
+        Size = _expandedSize;
         SizeCondition = ImGuiCond.FirstUseEver;
-        SizeConstraints = new()
-        {
-            MinimumSize = new Vector2(480f, 280f),
-            MaximumSize = MirageWindowDefaults.MaximumSize,
-        };
+        SizeConstraints = ExpandedConstraints();
     }
 
     public override void PreDraw()
     {
-        MirageTheme.EnsureDefaultsCaptured();
+        if (_chromeCollapsed)
+        {
+            var size = new Vector2(_expandedSize.X, MirageWindowHeader.BarHeight);
+            Size = size;
+            SizeCondition = ImGuiCond.Always;
+            SizeConstraints = new()
+            {
+                MinimumSize = size,
+                MaximumSize = size,
+            };
+            _restoreExpandedSize = true;
+        }
+        else
+        {
+            SizeConstraints = ExpandedConstraints();
+            if (_restoreExpandedSize)
+            {
+                Size = _expandedSize;
+                SizeCondition = ImGuiCond.Always;
+                _restoreExpandedSize = false;
+            }
+            else if (Size is { } current && current.Y > MirageWindowHeader.BarHeight + 2f)
+            {
+                _expandedSize = current;
+            }
+        }
+
         _themeScope = MirageTheme.PushCustom(MirageTheme.ResolveAppliedColors());
     }
 
     public override void PostDraw()
     {
+        MirageWindowCapture.Copy();
         MirageTheme.Pop(_themeScope);
         _themeScope = null;
     }
 
     public override void Draw()
     {
+        OracleWindowChrome.Draw(
+            this,
+            "Oracle Debug",
+            ref _chromeCollapsed,
+            ref _railCollapsed,
+            ref _pageId,
+            "Debug",
+            FontAwesomeIcon.Bug);
+        if (_chromeCollapsed)
+            return;
+
+        if (OracleWindowChrome.IsPluginPage(_pageId))
+        {
+            MirageUi.DrawPluginPage();
+            return;
+        }
+
         if (MirageUi.Button("Start", enabled: _engine.CanStartPreview))
             _engine.StartPreview();
         ImGui.SameLine();
@@ -155,4 +198,11 @@ internal sealed class DebugWindow : Window
 
         ImGui.Dummy(new Vector2(MarkRadius * 2f, Icon));
     }
+
+    private static WindowSizeConstraints ExpandedConstraints() =>
+        new()
+        {
+            MinimumSize = new Vector2(480f, 280f),
+            MaximumSize = new Vector2(4096f, 2160f),
+        };
 }

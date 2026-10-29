@@ -17,7 +17,6 @@ public sealed class Plugin : IDalamudPlugin
 
     private readonly WindowSystem _windowSystem;
     private readonly ConfigWindow _timelineConfigWindow;
-    private readonly PluginSettingsWindow _pluginSettingsWindow;
     private readonly CueOverlayWindow _overlayWindow;
     private readonly MajorOverlayWindow _majorOverlayWindow;
     private readonly AutoRecordOverlayWindow _autoRecordOverlayWindow;
@@ -92,8 +91,6 @@ public sealed class Plugin : IDalamudPlugin
         _debugWindow = new DebugWindow(_engine, _hotbarHighlight);
 
         // 3. ImGui windows — ActionSearch / import panels capture ConfigWindow via delayed assign
-        _pluginSettingsWindow = new PluginSettingsWindow();
-
         ConfigWindow timelineWindow = null!;
         var actionSearch = new ActionSearchWindow(
             getClassJobId: () => (timelineWindow.EditDocument ?? timelineStore.ActiveDocument)?.ClassJobId ?? 0,
@@ -115,8 +112,7 @@ public sealed class Plugin : IDalamudPlugin
             _engine,
             actionSearch,
             ffLogsImport,
-            autoRecordImport,
-            openPluginSettings: TogglePluginSettings);
+            autoRecordImport);
 
         _timelineConfigWindow = timelineWindow;
         _ffLogsImportPanel = ffLogsImport;
@@ -124,11 +120,10 @@ public sealed class Plugin : IDalamudPlugin
         _majorOverlayWindow = new MajorOverlayWindow(_engine);
         _autoRecordOverlayWindow = new AutoRecordOverlayWindow(
             _autoRecord,
-            openAutoRecordZones: () => _pluginSettingsWindow.ToggleAutoRecordPage());
+            openAutoRecordSettings: () => _timelineConfigWindow.ShowAutoRecordSettings());
         // 4. Window system + Dalamud UI hooks
         _windowSystem = new WindowSystem("Oracle");
         _windowSystem.AddWindow(_timelineConfigWindow);
-        _windowSystem.AddWindow(_pluginSettingsWindow);
         _windowSystem.AddWindow(_overlayWindow);
         _windowSystem.AddWindow(_majorOverlayWindow);
         _windowSystem.AddWindow(_autoRecordOverlayWindow);
@@ -181,14 +176,13 @@ public sealed class Plugin : IDalamudPlugin
 
         C = pluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
         C.Initialize(pluginInterface);
-        C.ThemeColors ??= MirageColorSettings.CreateDefault();
-
         I18n.Init(pluginInterface);
+        OracleTheme.Bind();
         C.SyncPresets ??= [];
         C.AutoLoadPresets ??= [];
         EnemySyncPresets.MigrateOnce();
 
-        MirageUi.ConfigureTheme(() => C.ThemeColors ?? MirageColorSettings.CreateDefault());
+        MirageUi.ConfigureTheme(() => OracleTheme.Current);
         MirageUi.Init(pluginInterface, textureProvider, log);
         MirageUi.ConfigurePluginInfo(info =>
         {
@@ -341,9 +335,11 @@ public sealed class Plugin : IDalamudPlugin
         PluginServices.ChatGui.Print(I18n.Format("config.chat.loaded", doc.Name));
     }
 
-    private void ToggleTimelineSettings() => _timelineConfigWindow.Toggle();
+    private void ToggleTimelineSettings() =>
+        _timelineConfigWindow.TogglePage(OracleWindowChrome.MainPageId);
 
-    private void TogglePluginSettings() => _pluginSettingsWindow.Toggle();
+    private void TogglePluginSettings() =>
+        _timelineConfigWindow.TogglePage(OracleWindowChrome.SettingsPageId);
 
     private static void ToggleFlag(Func<bool> get, Action<bool> set, string labelKey)
     {
@@ -371,6 +367,7 @@ public sealed class Plugin : IDalamudPlugin
     {
         _engine.Update();
         _autoRecord.Update();
+        _autoRecordOverlayWindow.ApplyOpenState();
         _pluginLog.Update();
     }
 
@@ -401,6 +398,7 @@ public sealed class Plugin : IDalamudPlugin
         _ffLogsImportPanel.Dispose();
 
         C.Save();
+        MirageWindowCapture.Dispose();
         MirageUi.Dispose();
 
         _windowSystem.RemoveAllWindows();

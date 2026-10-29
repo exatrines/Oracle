@@ -121,6 +121,17 @@ internal sealed unsafe class AutoRecordService : IDisposable
         }
     }
 
+    public string OverlayStatusText()
+    {
+        if (IsRecording)
+            return I18n.Format("autorecord.overlay.recording_clock", SessionElapsedSeconds);
+        if (HasPendingSave)
+            return I18n.Get("autorecord.overlay.status_pending_save");
+        if (!IsCurrentZoneEnabled)
+            return I18n.Get("autorecord.overlay.status_zone_disabled");
+        return I18n.Get("autorecord.overlay.status_stopped");
+    }
+
     public float SessionElapsedSecondsPrecise
     {
         get
@@ -159,6 +170,7 @@ internal sealed unsafe class AutoRecordService : IDisposable
                 DiscardSession();
             lock (_gate)
                 _prebuffer.Clear();
+            SetOverlayVisible(false);
             return;
         }
 
@@ -242,15 +254,27 @@ internal sealed unsafe class AutoRecordService : IDisposable
         lock (_gate)
             _prebuffer.Clear();
 
-        // Only when entering an enabled record zone.
-        if (!C.AutoRecordOverlayAutoOpenOnEffectiveZone)
+        // A new zone clears a manual close. Recording and a pending save keep the current visibility outside record zones.
+        if (C.AutoRecordOverlayAutoOpenOnEffectiveZone
+            && territory != 0
+            && C.IsAutoRecordZoneEnabled(territory))
+        {
+            SetOverlayVisible(true);
             return;
-        if (territory == 0 || !C.IsAutoRecordZoneEnabled(territory))
-            return;
-        if (C.AutoRecordOverlayVisible)
+        }
+
+        if (IsRecording || HasPendingSave)
             return;
 
-        C.AutoRecordOverlayVisible = true;
+        SetOverlayVisible(false);
+    }
+
+    private static void SetOverlayVisible(bool visible)
+    {
+        if (C.AutoRecordOverlayVisible == visible)
+            return;
+
+        C.AutoRecordOverlayVisible = visible;
         C.Save();
     }
 
@@ -339,11 +363,7 @@ internal sealed unsafe class AutoRecordService : IDisposable
             _pendingSave = true;
         }
 
-        if (!C.AutoRecordOverlayVisible)
-        {
-            C.AutoRecordOverlayVisible = true;
-            C.Save();
-        }
+        SetOverlayVisible(true);
     }
 
     private void EndSessionAndSave()

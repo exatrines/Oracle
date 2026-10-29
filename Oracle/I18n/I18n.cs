@@ -2,13 +2,10 @@ using System.Text.Json;
 
 namespace Oracle;
 
-/// <summary>
-/// UI-language strings from Data/I18n/{lang}.json (fallback: en).
-/// Language follows config (<see cref="Configuration.UiLanguage"/>), not only Dalamud UI language.
-/// </summary>
+// UI strings from Data/I18n. A saved "client" language is resolved once, then kept as en or ja.
 internal static class I18n
 {
-    public const string FollowClient = "client";
+    private const string FollowClient = "client";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -28,20 +25,41 @@ internal static class I18n
     {
         ArgumentNullException.ThrowIfNull(pluginInterface);
         _pluginInterface = pluginInterface;
-        pluginInterface.LanguageChanged += OnClientLanguageChanged;
         ApplyFromConfig();
+        var concrete = _lang == "ja" ? "ja" : "en";
+        if (!string.Equals(C.UiLanguage, concrete, StringComparison.OrdinalIgnoreCase))
+        {
+            C.UiLanguage = concrete;
+            C.Save();
+        }
+
+        if (_lang != concrete)
+            Load(concrete);
     }
 
     public static void Dispose()
     {
-        if (_pluginInterface != null)
-            _pluginInterface.LanguageChanged -= OnClientLanguageChanged;
         _pluginInterface = null;
         Reloaded = null;
         _strings = new(StringComparer.Ordinal);
     }
 
-    public static void ApplyFromConfig()
+    public static void SetLanguage(string langCode)
+    {
+        var next = string.Equals(NormalizeLangCode(langCode), "ja", StringComparison.Ordinal) ? "ja" : "en";
+        if (string.Equals(C.UiLanguage, next, StringComparison.OrdinalIgnoreCase) && _lang == next)
+        {
+            MirageUi.I18n.SetLanguage(next);
+            return;
+        }
+
+        C.UiLanguage = next;
+        C.Save();
+        Load(next);
+        Reloaded?.Invoke();
+    }
+
+    private static void ApplyFromConfig()
     {
         Load(ResolveConfiguredLang());
         Reloaded?.Invoke();
@@ -71,29 +89,6 @@ internal static class I18n
         }
     }
 
-    private static void OnClientLanguageChanged(string langCode)
-    {
-        if (!IsFollowClient())
-            return;
-
-        Load(NormalizeLangCode(langCode));
-        Reloaded?.Invoke();
-    }
-
-    private static bool IsFollowClient()
-    {
-        try
-        {
-            var mode = C.UiLanguage;
-            return string.IsNullOrWhiteSpace(mode)
-                   || string.Equals(mode, FollowClient, StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return true;
-        }
-    }
-
     private static string ResolveConfiguredLang()
     {
         try
@@ -119,6 +114,7 @@ internal static class I18n
             map = ReadLangFile("en");
 
         _strings = map;
+        MirageUi.I18n.SetLanguage(_lang);
     }
 
     private static string NormalizeLangCode(string? langCode)

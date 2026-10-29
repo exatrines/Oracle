@@ -88,16 +88,19 @@ public sealed class Configuration : IPluginConfiguration
     public float MajorZeroLineThickness { get; set; } = 2f;
     public Vector4 MajorLabelColor { get; set; } = new(0.85f, 0.85f, 0.85f, 0.9f);
 
-    // --- Timeline selection & UI theme ---
+    // --- Timeline selection ---
 
     public string ActiveTimelineId { get; set; } = string.Empty;
     public List<string> TimelineOrder { get; set; } = [];
-    public MirageColorSettings? ThemeColors { get; set; }
 
     /// <summary>
     /// Plugin UI language. <c>client</c> follows Dalamud UI language; otherwise a locale code (e.g. en, ja).
     /// </summary>
     public string UiLanguage { get; set; } = "client";
+
+    public string SelectedThemeId { get; set; } = "mirageui-white";
+
+    public List<SavedTheme> Themes { get; set; } = [];
 
     // --- FFLogs import ---
 
@@ -292,4 +295,13 @@ public enum MajorOverlayLaneMode
 {
     Single = 0,
     AbilityAndSkill = 1,
+}
+
+public sealed class SavedTheme
+{
+    public string Id { get; set; } = string.Empty;
+
+    public string Name { get; set; } = string.Empty;
+
+    public string Json { get; set; } = string.Empty;
 }

@@ -2,10 +2,9 @@ namespace Oracle.UI;
 
 // --- Shell: lifecycle → sidebar → page dispatch ---
 
-/// <summary>Plugin settings: General, Overlay, Auto Record, Import.</summary>
-internal sealed partial class PluginSettingsWindow : Window
+/// <summary>Plugin settings: log, overlay, Auto Record, import.</summary>
+internal sealed partial class PluginSettingsWindow
 {
-    private const string SettingsGeneral = "settings:general";
     private const string SettingsPluginLog = "settings:plugin-log";
     private const string SettingsOverlayFolder = "settings:overlay";
     private const string SettingsTimeline = "settings:timeline";
@@ -23,55 +22,29 @@ internal sealed partial class PluginSettingsWindow : Window
     private const string AutoRecordZoneFilterDisabled = "disabled";
     private const string AutoRecordZoneSortZoneId = "zoneId";
 
-    private string _selectedTabId = SettingsGeneral;
+    private string _selectedTabId = SettingsPluginLog;
     private string _sidebarSearch = string.Empty;
+    private bool _sidebarCollapsed;
     private uint _importActionJobId;
     private string _autoRecordZoneSearch = string.Empty;
     private readonly HashSet<string> _autoRecordZoneFilterIds = new(StringComparer.Ordinal);
     private bool _autoRecordZoneSortAscending;
     private readonly HashSet<string> _collapsedFolderIds = new(StringComparer.Ordinal);
-    private ImRaii.ColorDisposable? _themeScope;
 
-    public PluginSettingsWindow()
-        : base("Oracle Settings###oraclePluginSettings", ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
-    {
-        MirageWindowDefaults.ApplyTo(this);
-        Size = new Vector2(780, 560);
-        SizeCondition = ImGuiCond.FirstUseEver;
-    }
+    public void ShowAutoRecordPage() => _selectedTabId = SettingsAutoRecord;
 
-    public void ToggleAutoRecordPage()
+    public void Draw()
     {
-        _selectedTabId = SettingsAutoRecord;
-        Toggle();
-    }
-
-    public override void PreDraw()
-    {
-        WindowName = I18n.Get("window.settings.title") + "###oraclePluginSettings";
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
-        MirageTheme.EnsureDefaultsCaptured();
-        _themeScope = MirageTheme.PushCustom(MirageTheme.ResolveAppliedColors());
-    }
-
-    public override void PostDraw()
-    {
-        MirageTheme.Pop(_themeScope);
-        _themeScope = null;
-        ImGui.PopStyleVar();
-    }
-
-    public override void Draw()
-    {
-        MirageUi.TwoColumn.Draw(CreateTwoColumnState(), DrawMainContent);
+        var state = CreateTwoColumnState();
+        MirageUi.TwoColumn.Draw(state, DrawMainContent);
+        _sidebarCollapsed = state.SidebarCollapsed;
     }
 
     private MirageTwoColumnState CreateTwoColumnState() =>
         new()
         {
-            ShowSidebarHeader = false,
-            ShowSidebarFooter = false,
             ShowSearch = true,
+            SidebarCollapsed = _sidebarCollapsed,
             SearchHint = I18n.Get("settings.search_hint"),
             SearchFilter = _sidebarSearch,
             AllowDeselect = false,
@@ -90,14 +63,6 @@ internal sealed partial class PluginSettingsWindow : Window
 
     private static List<MirageTwoColumnSidebarNode> BuildSettingsSidebarNodes() =>
     [
-        new MirageTwoColumnPageNode
-        {
-            Entry = new MirageTwoColumnEntry
-            {
-                Id = SettingsGeneral,
-                Label = I18n.Get("settings.sidebar.general"),
-            },
-        },
         new MirageTwoColumnPageNode
         {
             Entry = new MirageTwoColumnEntry
@@ -186,9 +151,6 @@ internal sealed partial class PluginSettingsWindow : Window
     {
         switch (_selectedTabId)
         {
-            case SettingsGeneral:
-                DrawGeneralSettings();
-                return;
             case SettingsPluginLog:
                 DrawPluginLogSettings();
                 return;

@@ -42,78 +42,86 @@ internal static class SyncPresetSettingsUi
     {
         EnsureDraft(presetId);
         var rows = EnemySyncPresets.EditableSpecsFor(presetId);
-        var tableWidth = Math.Max(1f, ImGui.GetContentRegionAvail().X);
-        DrawExisting(presetId, rows, tableWidth);
-        DrawDraftRow(presetId, rows, tableWidth);
-    }
-
-    private static void DrawExisting(string presetId, List<SyncPresetEntry> rows, float tableWidth)
-    {
         if (rows.Count == 0)
-        {
             MirageUi.Text(I18n.Get("settings.sync_presets.empty"), MirageUi.Color.Secondary);
-            return;
-        }
 
-        if (!PresetZoneListUi.BeginRowTable("##syncPresetRows", tableWidth))
-            return;
-
-        for (var i = 0; i < rows.Count; i++)
-        {
-            ImGui.PushID(i);
-            ImGui.TableNextRow();
-            ImGui.TableNextColumn();
-
-            var spec = rows[i];
-            var syncType = spec.SyncType;
-            var actionId = spec.ActionId;
-            var effected = spec.Effected;
-            if (SyncCueFields.DrawRow(ref syncType, ref actionId, ref effected, "row"))
-            {
-                rows[i] = new SyncPresetEntry
-                {
-                    SyncType = syncType,
-                    ActionId = actionId,
-                    Effected = effected,
-                };
-                EnemySyncPresets.Save(presetId, rows);
-            }
-
-            ImGui.TableNextColumn();
-            if (MirageUi.IconButton(
-                    FontAwesomeIcon.Trash,
-                    "##deleteSyncPreset",
-                    size: default,
-                    tooltip: I18n.Get("config.cue.tooltip.delete_row")))
-            {
-                rows.RemoveAt(i);
-                EnemySyncPresets.Save(presetId, rows);
-                ImGui.PopID();
-                ImGui.EndTable();
-                return;
-            }
-
-            ImGui.PopID();
-        }
-
-        ImGui.EndTable();
+        MirageUi.Table.Draw(
+            "##syncPresetRows",
+            SyncColumns(),
+            rows.Count,
+            index => DrawSyncRow(presetId, rows, index),
+            () => DrawSyncDraft(presetId, rows));
     }
 
-    private static void DrawDraftRow(string presetId, List<SyncPresetEntry> rows, float tableWidth)
+    private static bool DrawSyncRow(string presetId, List<SyncPresetEntry> rows, int index)
     {
-        if (!PresetZoneListUi.BeginRowTable("##syncPresetDraft", tableWidth))
-            return;
+        ImGui.PushID(index);
+        var spec = rows[index];
+        var syncType = spec.SyncType;
+        var actionId = spec.ActionId;
+        var effected = spec.Effected;
+        var dirty = false;
 
+        MirageUi.Table.NextColumn();
+        if (SyncCueFields.DrawTypeField(ref syncType, "rowType"))
+        {
+            actionId = 0;
+            effected = false;
+            dirty = true;
+        }
+
+        MirageUi.Table.NextColumn();
+        if (SyncCueFields.DrawNameField(ref actionId, syncType, "rowName"))
+            dirty = true;
+
+        MirageUi.Table.NextColumn();
+        if (SyncCueFields.DrawEdgeField(ref effected, syncType, "rowEdge"))
+            dirty = true;
+
+        if (dirty)
+        {
+            rows[index] = new SyncPresetEntry
+            {
+                SyncType = syncType,
+                ActionId = actionId,
+                Effected = effected,
+            };
+            EnemySyncPresets.Save(presetId, rows);
+        }
+
+        MirageUi.Table.NextColumn();
+        var deleted = MirageUi.IconButton(
+            FontAwesomeIcon.Trash,
+            "##deleteSyncPreset",
+            size: default,
+            tooltip: I18n.Get("config.cue.tooltip.delete_row"));
+        if (deleted)
+        {
+            rows.RemoveAt(index);
+            EnemySyncPresets.Save(presetId, rows);
+        }
+
+        ImGui.PopID();
+        return deleted;
+    }
+
+    private static void DrawSyncDraft(string presetId, List<SyncPresetEntry> rows)
+    {
         ImGui.PushID("##syncPresetDraft");
-        ImGui.TableNextRow();
-        ImGui.TableNextColumn();
-        SyncCueFields.DrawRow(
-            ref _draftSyncType,
-            ref _draftActionId,
-            ref _draftEffected,
-            "draft");
+        MirageUi.Table.NextColumn();
+        if (SyncCueFields.DrawTypeField(ref _draftSyncType, "draftType"))
+        {
+            _draftActionId = 0;
+            _draftEffected = false;
+        }
 
-        ImGui.TableNextColumn();
+        MirageUi.Table.NextColumn();
+        SyncCueFields.DrawNameField(ref _draftActionId, _draftSyncType, "draftName");
+
+        MirageUi.Table.NextColumn();
+        SyncCueFields.DrawEdgeField(ref _draftEffected, _draftSyncType, "draftEdge");
+
+        MirageUi.Table.NextColumn();
         var canSubmit = _draftActionId != 0;
         if (MirageUi.IconButton(
                 FontAwesomeIcon.ArrowUpFromBracket,
@@ -134,7 +142,18 @@ internal static class SyncPresetSettingsUi
         }
 
         ImGui.PopID();
-        ImGui.EndTable();
+    }
+
+    private static MirageTableColumn[] SyncColumns()
+    {
+        var trash = MirageUi.ResolveControlHeight() + 6f;
+        return
+        [
+            new() { Label = I18n.Get("settings.sync_presets.col.type"), Width = 96f },
+            new() { Label = I18n.Get("settings.sync_presets.col.name"), Width = 220f, Stretch = true },
+            new() { Label = I18n.Get("settings.sync_presets.col.edge"), Width = 120f },
+            new() { Width = trash },
+        ];
     }
 
     private static void EnsureDraft(string presetId)

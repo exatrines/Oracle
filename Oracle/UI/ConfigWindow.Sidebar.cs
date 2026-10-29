@@ -11,13 +11,11 @@ internal sealed partial class ConfigWindow
     private MirageTwoColumnState CreateTimelineTwoColumnState()
     {
         var sidebarNodes = BuildZoneFolderNodes();
-        var iconPath = File.Exists(_pluginIconPath) ? _pluginIconPath : null;
 
         return new MirageTwoColumnState
         {
-            ShowSidebarHeader = true,
-            ShowSidebarFooter = false,
             ShowSearch = true,
+            SidebarCollapsed = _sidebarCollapsed,
             SearchHint = I18n.Get("sidebar.search_hint"),
             SearchFilter = _sidebarSearch,
             AllowDeselect = false,
@@ -27,24 +25,6 @@ internal sealed partial class ConfigWindow
             OnEntryReorderDragIdChanged = id => _entryReorderDragId = id,
             OnEntryReordered = OnTimelineReordered,
             CollapsedFolderIds = _collapsedFolderIds,
-            SidebarHeader = new MirageTwoColumnSidebarHeader
-            {
-                ImagePath = iconPath,
-                ImageWidth = 48f,
-                ImageHeight = 48f,
-                Title = I18n.Get("window.config.title"),
-                Subtitle = $"v{PluginServices.PluginInterface.Manifest.AssemblyVersion}",
-                TrailingActions =
-                [
-                    new MirageTwoColumnTrailingAction
-                    {
-                        Id = "settings",
-                        Icon = FontAwesomeIcon.Cog,
-                        Tooltip = I18n.Get("sidebar.tooltip.settings"),
-                        OnClick = _openPluginSettings,
-                    },
-                ],
-            },
             SearchTrailingActions =
             [
                 new MirageTwoColumnTrailingAction
@@ -222,6 +202,7 @@ internal sealed partial class ConfigWindow
 
     private void OnSidebarSelectionChanged(string id)
     {
+        _pageId = OracleWindowChrome.MainPageId;
         if (string.IsNullOrEmpty(id))
             return;
 

@@ -72,22 +72,6 @@ internal static class PresetZoneListUi
         return preset;
     }
 
-    public static bool BeginRowTable(string id, float tableWidth)
-    {
-        const ImGuiTableFlags flags =
-            ImGuiTableFlags.Borders
-            | ImGuiTableFlags.RowBg
-            | ImGuiTableFlags.SizingStretchProp
-            | ImGuiTableFlags.NoHostExtendX;
-
-        if (!ImGui.BeginTable(id, 2, flags, new Vector2(tableWidth, 0f)))
-            return false;
-
-        ImGui.TableSetupColumn(string.Empty, ImGuiTableColumnFlags.WidthStretch);
-        ImGui.TableSetupColumn(string.Empty, ImGuiTableColumnFlags.WidthFixed, MirageUi.ResolveControlHeight() + 6f);
-        return true;
-    }
-
     private static NamedZonePreset? Find(IReadOnlyList<NamedZonePreset> listed, string selectedId)
     {
         foreach (var preset in listed)

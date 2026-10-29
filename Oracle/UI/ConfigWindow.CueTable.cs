@@ -15,66 +15,31 @@ internal sealed partial class ConfigWindow
 
         DrawCueToolbar(doc);
 
-        // Fill remaining right-panel height; leave room for the fixed draft row below.
-        var spacing = ImGui.GetStyle().ItemSpacing.Y;
-        var draftReserve = MirageUi.ResolveControlHeight() + ImGui.GetStyle().CellPadding.Y * 2f + 8f;
-        var bodyHeight = Math.Max(64f, ImGui.GetContentRegionAvail().Y - draftReserve - spacing);
-
-        // Always reserve the scrollbar gutter; measure inner width so the draft row matches exactly
-        // (child padding alone would leave the draft wider than list buttons).
-        var tableWidth = Math.Max(1f, ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ScrollbarSize);
-        using (ImRaii.PushStyle(ImGuiStyleVar.WindowPadding, Vector2.Zero))
-        using (var scroll = ImRaii.Child(
-                   "##cueTableScroll",
-                   new Vector2(-1f, bodyHeight),
-                   false,
-                   ImGuiWindowFlags.AlwaysVerticalScrollbar | ImGuiWindowFlags.AlwaysUseWindowPadding))
-        {
-            if (scroll)
+        var cues = doc.Cues.OrderBy(c => c.TimeOffsetSec).ToList();
+        var dirty = false;
+        MirageUi.Table.Draw(
+            "##cueTable",
+            CueTableColumns(),
+            cues.Count,
+            index =>
             {
-                tableWidth = Math.Max(1f, ImGui.GetContentRegionAvail().X);
+                var cue = cues[index];
+                ImGui.PushID(cue.Id);
+                var deleted = DrawCueTableRow(doc, cue, ref dirty);
+                ImGui.PopID();
+                return deleted;
+            },
+            () => DrawCueDraftRow(doc));
 
-                const ImGuiTableFlags flags =
-                    ImGuiTableFlags.Borders
-                    | ImGuiTableFlags.RowBg
-                    | ImGuiTableFlags.SizingStretchProp
-                    | ImGuiTableFlags.NoHostExtendX;
-
-                if (ImGui.BeginTable("##cueTable", 5, flags, new Vector2(tableWidth, 0f)))
-                {
-                    SetupCueTableColumns();
-                    ImGui.TableHeadersRow();
-
-                    var dirty = false;
-                    foreach (var cue in doc.Cues.OrderBy(c => c.TimeOffsetSec).ToList())
-                    {
-                        ImGui.PushID(cue.Id);
-                        if (DrawCueTableRow(doc, cue, tableWidth, ref dirty))
-                        {
-                            ImGui.PopID();
-                            break;
-                        }
-
-                        ImGui.PopID();
-                    }
-
-                    ImGui.EndTable();
-
-                    if (dirty)
-                        PersistDocument(doc);
-                }
-            }
-        }
-
-        DrawCueDraftRow(doc, tableWidth);
+        if (dirty)
+            PersistDocument(doc);
     }
 
     /// <returns>True when the row was deleted and the table loop should stop.</returns>
-    private bool DrawCueTableRow(TimelineDocument doc, TimelineCue cue, float tableWidth, ref bool dirty)
+    private bool DrawCueTableRow(TimelineDocument doc, TimelineCue cue, ref bool dirty)
     {
-        ImGui.TableNextRow();
-        ImGui.TableNextColumn();
-        var rowMin = ImGui.GetCursorScreenPos();
+        MirageUi.Table.NextColumn();
+        var rowMin = MirageUi.Table.CellOrigin;
 
         var selected = _selectedCueIds.Contains(cue.Id);
         if (MirageUi.Checkbox("##sel", ref selected))
@@ -85,10 +50,10 @@ internal sealed partial class ConfigWindow
                 _selectedCueIds.Remove(cue.Id);
         }
 
-        ImGui.TableNextColumn();
+        MirageUi.Table.NextColumn();
         DrawCueTimeCell(cue, ref dirty);
 
-        ImGui.TableNextColumn();
+        MirageUi.Table.NextColumn();
         var kindLabel = CueKindLabel(cue.Kind);
         if (MirageUi.Dropdown(
                 string.Empty,
@@ -118,7 +83,7 @@ internal sealed partial class ConfigWindow
             }
         }
 
-        ImGui.TableNextColumn();
+        MirageUi.Table.NextColumn();
         if (cue.Kind == TimelineCueKind.Memo)
         {
             var memo = cue.Label;
@@ -144,7 +109,7 @@ internal sealed partial class ConfigWindow
                 dirty = true;
         }
 
-        ImGui.TableNextColumn();
+        MirageUi.Table.NextColumn();
         if (MirageUi.IconButton(
                 FontAwesomeIcon.Trash,
                 "##deleteCue",
@@ -155,8 +120,10 @@ internal sealed partial class ConfigWindow
             return true;
         }
 
-        var rowMax = new Vector2(rowMin.X + tableWidth, ImGui.GetItemRectMax().Y);
-        DrawCueRowContextMenu(doc, cue, rowMin, rowMax);
+        var bottom = ImGui.GetItemRectMax().Y;
+        var left = rowMin.X + MirageUi.Table.ScrollX;
+        var right = left + MirageUi.Table.VisibleWidth;
+        DrawCueRowContextMenu(doc, cue, new Vector2(left, rowMin.Y), new Vector2(right, bottom));
         return false;
     }
 
@@ -395,9 +362,11 @@ internal sealed partial class ConfigWindow
     /// <summary>Icon slot + pick button; empty action still reserves icon width so draft matches list.</summary>
     private static void DrawCueActionPickButton(uint actionId, string label, Action onClick, float buttonWidth)
     {
-        var iconId = ActionLookup.GetIconId(actionId);
-        if (iconId == 0 || !MirageUi.GameIcon(iconId, CueActionIconSize, CueActionIconSize))
-            ImGui.Dummy(new Vector2(CueActionIconSize, CueActionIconSize));
+        MirageUi.GameIcon(
+            ActionLookup.GetIconId(actionId),
+            CueActionIconSize,
+            CueActionIconSize,
+            framed: true);
         ImGui.SameLine();
 
         var btnWidth = Math.Max(1f, buttonWidth);
@@ -460,12 +429,12 @@ internal sealed partial class ConfigWindow
         if (ImGui.IsItemHovered())
             MirageUi.Tooltip(tooltip);
 
-        DrawTargetSlotIcon(ImGui.GetItemRectMin(), ImGui.GetItemRectMax(), kind, jobId, role, selected: kind != CueTargetKind.None);
+        DrawTargetSlotIcon(ImGui.GetItemRectMin(), ImGui.GetItemRectMax(), kind, jobId, role);
 
         if (!MirageUi.BeginAccentPopup("##targetPopup"))
             return;
 
-        if (DrawTargetNoneOption(kind == CueTargetKind.None))
+        if (DrawTargetNoneOption())
         {
             kind = CueTargetKind.None;
             jobId = 0;
@@ -479,8 +448,7 @@ internal sealed partial class ConfigWindow
             ImGui.PushID((int)item);
             if (DrawTargetIconOption(
                     CueTargetCatalog.GetRoleIconId(item),
-                    CueTargetCatalog.GetRoleLabel(item),
-                    kind == CueTargetKind.Role && role == item))
+                    CueTargetCatalog.GetRoleLabel(item)))
             {
                 kind = CueTargetKind.Role;
                 role = item;
@@ -503,8 +471,7 @@ internal sealed partial class ConfigWindow
             ImGui.PushID((int)job.Id);
             if (DrawTargetIconOption(
                     CueTargetCatalog.GetJobIconId(job.Id),
-                    $"{job.Abbreviation} - {job.Name}",
-                    kind == CueTargetKind.Job && jobId == job.Id))
+                    $"{job.Abbreviation} - {job.Name}"))
             {
                 kind = CueTargetKind.Job;
                 jobId = job.Id;
@@ -531,37 +498,25 @@ internal sealed partial class ConfigWindow
             _ => I18n.Get("config.cue.target.none"),
         };
 
-    private static bool DrawTargetNoneOption(bool selected)
+    private static bool DrawTargetNoneOption()
     {
         var size = new Vector2(CueActionIconSize, CueActionIconSize);
         var clicked = ImGui.InvisibleButton("##targetNone", size);
         var min = ImGui.GetItemRectMin();
         var max = ImGui.GetItemRectMax();
-        var drawList = ImGui.GetWindowDrawList();
-        drawList.AddRect(min, max, ImGui.GetColorU32(ImGuiCol.Border), 3f);
-        if (selected)
-            drawList.AddRect(min, max, ImGui.GetColorU32(ImGuiCol.CheckMark), 3f, ImDrawFlags.None, 2f);
-
-        using (ImRaii.PushFont(UiBuilder.IconFont))
-        {
-            var icon = FontAwesomeIcon.Ban.ToIconString();
-            var textSize = ImGui.CalcTextSize(icon);
-            drawList.AddText(
-                min + (max - min - textSize) * 0.5f,
-                ImGui.GetColorU32(ImGuiCol.TextDisabled),
-                icon);
-        }
+        MirageUi.ImageFrame(null, min, max);
+        DrawTargetBanGlyph(min, max);
 
         if (ImGui.IsItemHovered())
             MirageUi.Tooltip(I18n.Get("config.cue.target.none"));
         return clicked;
     }
 
-    private static bool DrawTargetIconOption(uint iconId, string tooltip, bool selected)
+    private static bool DrawTargetIconOption(uint iconId, string tooltip)
     {
         var size = new Vector2(CueActionIconSize, CueActionIconSize);
         var clicked = ImGui.InvisibleButton("##targetOpt", size);
-        DrawTargetIconRect(ImGui.GetItemRectMin(), ImGui.GetItemRectMax(), iconId, selected);
+        DrawTargetIconRect(ImGui.GetItemRectMin(), ImGui.GetItemRectMax(), iconId);
         if (ImGui.IsItemHovered())
             MirageUi.Tooltip(tooltip);
         return clicked;
@@ -572,52 +527,57 @@ internal sealed partial class ConfigWindow
         Vector2 max,
         CueTargetKind kind,
         uint jobId,
-        CueTargetRole role,
-        bool selected)
+        CueTargetRole role)
     {
         if (kind == CueTargetKind.None)
         {
-            var drawList = ImGui.GetWindowDrawList();
-            drawList.AddRect(min, max, ImGui.GetColorU32(ImGuiCol.Border), 3f);
-            using (ImRaii.PushFont(UiBuilder.IconFont))
-            {
-                var icon = FontAwesomeIcon.Ban.ToIconString();
-                var textSize = ImGui.CalcTextSize(icon);
-                drawList.AddText(
-                    min + (max - min - textSize) * 0.5f,
-                    ImGui.GetColorU32(ImGuiCol.TextDisabled),
-                    icon);
-            }
-
+            MirageUi.ImageFrame(null, min, max);
+            DrawTargetBanGlyph(min, max);
             return;
         }
 
         var iconId = kind == CueTargetKind.Job
             ? CueTargetCatalog.GetJobIconId(jobId)
             : CueTargetCatalog.GetRoleIconId(role);
-        DrawTargetIconRect(min, max, iconId, selected);
+        DrawTargetIconRect(min, max, iconId);
     }
 
-    private static void DrawTargetIconRect(Vector2 min, Vector2 max, uint iconId, bool selected)
+    private static void DrawTargetIconRect(Vector2 min, Vector2 max, uint iconId)
     {
-        var drawList = ImGui.GetWindowDrawList();
-        if (iconId != 0 && MirageUi.TryGetGameIcon(iconId, out var texture))
-            drawList.AddImage(texture.Handle, min, max);
-        else
-            drawList.AddRectFilled(min, max, ImGui.GetColorU32(ImGuiCol.FrameBg), 3f);
+        if (iconId == 0 || !MirageUi.TryGetGameIcon(iconId, out var texture))
+            return;
 
-        if (selected)
-            drawList.AddRect(min, max, ImGui.GetColorU32(ImGuiCol.CheckMark), 3f, ImDrawFlags.None, 2f);
+        // Input borders sit one pixel below and to the right of the item rect.
+        var shift = Vector2.One;
+        ImGui.GetWindowDrawList().AddImage(texture.Handle, min + shift, max + shift);
     }
 
-    private static void SetupCueTableColumns()
+    private static void DrawTargetBanGlyph(Vector2 min, Vector2 max)
     {
-        var timeCol = MirageUi.ResolveControlHeight() + 116f + ImGui.GetStyle().ItemSpacing.X;
-        ImGui.TableSetupColumn("", ImGuiTableColumnFlags.WidthFixed, MirageUi.ResolveControlHeight() + 4f);
-        ImGui.TableSetupColumn(I18n.Get("config.cue.col.time"), ImGuiTableColumnFlags.WidthFixed, timeCol);
-        ImGui.TableSetupColumn("", ImGuiTableColumnFlags.WidthFixed, 96f);
-        ImGui.TableSetupColumn(I18n.Get("config.cue.col.contents"), ImGuiTableColumnFlags.WidthStretch);
-        ImGui.TableSetupColumn("", ImGuiTableColumnFlags.WidthFixed, MirageUi.ResolveControlHeight() + 6f);
+        using (ImRaii.PushFont(UiBuilder.IconFont))
+        {
+            var icon = FontAwesomeIcon.Ban.ToIconString();
+            var textSize = ImGui.CalcTextSize(icon);
+            ImGui.GetWindowDrawList().AddText(
+                min + (max - min - textSize) * 0.5f,
+                ImGui.GetColorU32(ImGuiCol.TextDisabled),
+                icon);
+        }
+    }
+
+    private static MirageTableColumn[] CueTableColumns()
+    {
+        var padX = MirageUi.ResolveInputFramePadding().X;
+        var timeInput = ImGui.CalcTextSize("00:00.000").X + padX * 2f + 4f;
+        var timeCol = timeInput + MirageUi.ResolveControlHeight() + ImGui.GetStyle().ItemSpacing.X;
+        return
+        [
+            new() { Width = MirageUi.ResolveControlHeight() + 4f, Align = MirageTableAlign.Center },
+            new() { Label = I18n.Get("config.cue.col.time"), Width = timeCol },
+            new() { Label = I18n.Get("config.cue.col.kind"), Width = 96f },
+            new() { Label = I18n.Get("config.cue.col.contents"), Width = 220f, Stretch = true },
+            new() { Width = MirageUi.ResolveControlHeight() + 6f },
+        ];
     }
 
     private void EnsureNewCueDraft(TimelineDocument doc)
@@ -644,26 +604,12 @@ internal sealed partial class ConfigWindow
     }
 
     /// <summary>Fixed input row under the cue table; up-arrow commits into the list.</summary>
-    private void DrawCueDraftRow(TimelineDocument doc, float tableWidth)
+    private void DrawCueDraftRow(TimelineDocument doc)
     {
-        const ImGuiTableFlags flags =
-            ImGuiTableFlags.Borders
-            | ImGuiTableFlags.RowBg
-            | ImGuiTableFlags.SizingStretchProp
-            | ImGuiTableFlags.NoHostExtendX;
-
-        if (!ImGui.BeginTable("##cueDraftRow", 5, flags, new Vector2(Math.Max(1f, tableWidth), 0f)))
-            return;
-
-        SetupCueTableColumns();
-
         ImGui.PushID("##cueDraft");
-        ImGui.TableNextRow();
+        MirageUi.Table.NextColumn();
 
-        // Spacer matching the selection checkbox column.
-        ImGui.TableNextColumn();
-
-        ImGui.TableNextColumn();
+        MirageUi.Table.NextColumn();
         MirageUi.InputText(
             string.Empty,
             ref _newCueTimeText,
@@ -672,7 +618,7 @@ internal sealed partial class ConfigWindow
             hint: I18n.Get("config.cue.hint.time"),
             width: MirageUi.InputWidthFill);
 
-        ImGui.TableNextColumn();
+        MirageUi.Table.NextColumn();
         var kindLabel = CueKindLabel(_newCueKind);
         if (MirageUi.Dropdown(
                 string.Empty,
@@ -694,7 +640,7 @@ internal sealed partial class ConfigWindow
             }
         }
 
-        ImGui.TableNextColumn();
+        MirageUi.Table.NextColumn();
         var isMemo = _newCueKind == TimelineCueKind.Memo;
         var isSync = _newCueKind == TimelineCueKind.Sync;
         if (isMemo)
@@ -727,7 +673,7 @@ internal sealed partial class ConfigWindow
                 ref _newCueTargetRole);
         }
 
-        ImGui.TableNextColumn();
+        MirageUi.Table.NextColumn();
         var canSubmit = CueTime.TryParse(_newCueTimeText, out _)
                         && (isMemo || _newCueActionId != 0);
         if (MirageUi.IconButton(
@@ -740,7 +686,6 @@ internal sealed partial class ConfigWindow
             SubmitNewCueRow(doc);
 
         ImGui.PopID();
-        ImGui.EndTable();
     }
 
     private void SubmitNewCueRow(TimelineDocument doc)

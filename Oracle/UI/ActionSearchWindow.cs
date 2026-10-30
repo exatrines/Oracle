@@ -87,16 +87,18 @@ internal sealed class ActionSearchWindow : Window
     {
         var title = I18n.Get("window.action_search.title");
         OracleWindowChrome.Draw(this, title, ref _chromeCollapsed);
-        if (_chromeCollapsed)
-            return;
+        if (!_chromeCollapsed)
+        {
+            MirageUi.TwoColumn.Draw(
+                new MirageTwoColumnState
+                {
+                    ShowSidebar = false,
+                    ShowSearch = false,
+                },
+                DrawContent);
+        }
 
-        MirageUi.TwoColumn.Draw(
-            new MirageTwoColumnState
-            {
-                ShowSidebar = false,
-                ShowSearch = false,
-            },
-            DrawContent);
+        MirageWindowHeader.DragClientArea(this);
     }
 
     // --- Content ---

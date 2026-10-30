@@ -114,6 +114,12 @@ internal sealed partial class ConfigWindow : Window
 
     public override void Draw()
     {
+        DrawPages();
+        MirageWindowHeader.DragClientArea(this);
+    }
+
+    private void DrawPages()
+    {
         EnsureDefaultSelection();
         var title = I18n.Get("window.config.title");
         MirageWindowHeader.Section[] sections =

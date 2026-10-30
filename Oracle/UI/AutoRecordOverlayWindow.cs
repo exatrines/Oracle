@@ -93,9 +93,14 @@ internal sealed class AutoRecordOverlayWindow : Window
         }
 
         SyncWindowPosition();
-        if (collapsed)
-            return;
+        if (!collapsed)
+            DrawBody();
 
+        MirageWindowHeader.DragClientArea(this);
+    }
+
+    private void DrawBody()
+    {
         var contentW = PanelWidth - ContentPad * 2f;
         ImGui.SetCursorPos(new Vector2(ContentPad, MirageWindowHeader.BarHeight + ContentPad));
 

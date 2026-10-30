@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.4] - 2026-10-30
+
+### Changed
+
+- Updated to the latest MirageUI. Built-in White and Black follow its current presets, and windows can be dragged from the page and the sidebar
+
 ## [1.3.3] - 2026-10-29
 
 ### Changed

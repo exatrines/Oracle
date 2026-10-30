@@ -6,9 +6,6 @@ namespace Oracle.UI;
 // Built-in MirageUI themes plus saved custom themes.
 internal static class OracleTheme
 {
-    public const string WhiteId = "mirageui-white";
-    public const string BlackId = "mirageui-black";
-
     private static readonly JsonSerializerOptions EnvelopeOptions = new()
     {
         WriteIndented = true,
@@ -17,7 +14,7 @@ internal static class OracleTheme
 
     public static MirageColorSettings Current { get; private set; } = MirageColorSettings.CreateWhite();
 
-    public static bool IsBuiltin(string id) => id is WhiteId or BlackId;
+    public static bool IsBuiltin(string id) => MirageColorSettings.IsBuiltinTheme(id);
 
     public static SavedTheme Selected =>
         C.Themes.Find(theme => theme.Id == C.SelectedThemeId) ?? C.Themes[0];
@@ -31,12 +28,12 @@ internal static class OracleTheme
         var customs = C.Themes.Where(theme => !IsBuiltin(theme.Id) && !string.IsNullOrWhiteSpace(theme.Id)).ToList();
         C.Themes =
         [
-            Builtin(WhiteId, "MirageUI White", MirageColorSettings.CreateWhite()),
-            Builtin(BlackId, "MirageUI Black", MirageColorSettings.CreateBlack()),
+            Builtin(MirageColorSettings.WhiteThemeId, "MirageUI White", MirageColorSettings.CreateBuiltin(MirageColorSettings.WhiteThemeId)),
+            Builtin(MirageColorSettings.BlackThemeId, "MirageUI Black", MirageColorSettings.CreateBuiltin(MirageColorSettings.BlackThemeId)),
             .. customs,
         ];
         if (C.Themes.All(theme => theme.Id != C.SelectedThemeId))
-            C.SelectedThemeId = WhiteId;
+            C.SelectedThemeId = MirageColorSettings.WhiteThemeId;
         Apply();
     }
 

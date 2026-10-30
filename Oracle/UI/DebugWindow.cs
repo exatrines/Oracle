@@ -79,36 +79,34 @@ internal sealed class DebugWindow : Window
             ref _pageId,
             "Debug",
             FontAwesomeIcon.Bug);
-        if (_chromeCollapsed)
-            return;
-
-        if (OracleWindowChrome.IsPluginPage(_pageId))
-        {
+        if (!_chromeCollapsed && OracleWindowChrome.IsPluginPage(_pageId))
             MirageUi.DrawPluginPage();
-            return;
+        else if (!_chromeCollapsed)
+        {
+            if (MirageUi.Button("Start", enabled: _engine.CanStartPreview))
+                _engine.StartPreview();
+            ImGui.SameLine();
+            if (MirageUi.Button(_engine.IsPreviewPaused ? "Resume" : "Pause", enabled: _engine.IsRunning && _engine.IsPreview))
+                _engine.TryTogglePreviewPause();
+            ImGui.SameLine();
+            if (MirageUi.Button("Stop", enabled: _engine.IsRunning && _engine.IsPreview))
+                _engine.StopPreview();
+
+            var status = !_engine.IsRunning || !_engine.IsPreview
+                ? "stopped"
+                : _engine.IsPreviewPaused ? "paused" : "running";
+            MirageUi.Text($"{status}  {_engine.ElapsedSeconds:0.000}s", MirageUi.Color.Secondary);
+
+            var cells = new Dictionary<(byte, byte), HotbarDebugCell>();
+            foreach (var slot in _hotbarHighlight.LastFrame.Slots)
+                cells[(slot.HotbarId, slot.SlotId)] = slot;
+
+            DrawTable("HB", 12, 0, 10, cells);
+            DrawTable("XHB", 16, 10, 8, cells);
+            DrawWxhb();
         }
 
-        if (MirageUi.Button("Start", enabled: _engine.CanStartPreview))
-            _engine.StartPreview();
-        ImGui.SameLine();
-        if (MirageUi.Button(_engine.IsPreviewPaused ? "Resume" : "Pause", enabled: _engine.IsRunning && _engine.IsPreview))
-            _engine.TryTogglePreviewPause();
-        ImGui.SameLine();
-        if (MirageUi.Button("Stop", enabled: _engine.IsRunning && _engine.IsPreview))
-            _engine.StopPreview();
-
-        var status = !_engine.IsRunning || !_engine.IsPreview
-            ? "stopped"
-            : _engine.IsPreviewPaused ? "paused" : "running";
-        MirageUi.Text($"{status}  {_engine.ElapsedSeconds:0.000}s", MirageUi.Color.Secondary);
-
-        var cells = new Dictionary<(byte, byte), HotbarDebugCell>();
-        foreach (var slot in _hotbarHighlight.LastFrame.Slots)
-            cells[(slot.HotbarId, slot.SlotId)] = slot;
-
-        DrawTable("HB", 12, 0, 10, cells);
-        DrawTable("XHB", 16, 10, 8, cells);
-        DrawWxhb();
+        MirageWindowHeader.DragClientArea(this);
     }
 
     private static void DrawTable(
